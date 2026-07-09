@@ -5,6 +5,11 @@ type SendZApiTextInput = {
   message: string
 }
 
+type SendZApiPresenceInput = {
+  to: string
+  status: "composing" | "paused"
+}
+
 export type ParsedZApiWebhook =
   | {
       event: "presence"
@@ -34,6 +39,7 @@ export function getZApiConfig() {
   const clientToken = process.env.Z_API_CLIENT_TOKEN
   const baseUrl = process.env.Z_API_BASE_URL
   const sendTextUrl = process.env.Z_API_SEND_TEXT_URL
+  const sendPresenceUrl = process.env.Z_API_SEND_PRESENCE_URL
   const defaultNumber = process.env.Z_API_DEFAULT_NUMBER
 
   if (!instanceId || !instanceToken || !clientToken) {
@@ -48,6 +54,7 @@ export function getZApiConfig() {
     defaultNumber: defaultNumber || "",
     baseUrl: resolvedBaseUrl,
     sendTextUrl: sendTextUrl || `${resolvedBaseUrl}/send-text`,
+    sendPresenceUrl: sendPresenceUrl || `${resolvedBaseUrl}/send-chat-presence`,
   }
 }
 
@@ -76,6 +83,36 @@ export async function sendZApiTextMessage(input: SendZApiTextInput) {
 
   if (!response.ok) {
     throw new Error(typeof result === "object" && result ? JSON.stringify(result) : "A Z-API recusou o envio.")
+  }
+
+  return result
+}
+
+export async function sendZApiPresence(input: SendZApiPresenceInput) {
+  const config = getZApiConfig()
+  const response = await fetch(config.sendPresenceUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Client-Token": config.clientToken,
+    },
+    body: JSON.stringify({
+      phone: normalizePhone(input.to),
+      status: input.status,
+    }),
+    cache: "no-store",
+  })
+
+  const text = await response.text()
+  let result: unknown = null
+  try {
+    result = text ? JSON.parse(text) : null
+  } catch {
+    result = { raw: text }
+  }
+
+  if (!response.ok) {
+    throw new Error(typeof result === "object" && result ? JSON.stringify(result) : "A Z-API recusou o presence.")
   }
 
   return result

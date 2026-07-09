@@ -88,6 +88,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [draft, setDraft] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newConversation, setNewConversation] = useState<ConversationFormState>(emptyConversationForm)
+  const [sending, setSending] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -193,8 +194,9 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   }
 
   async function submitCurrentMessage() {
-    if (!draft.trim() || !active) return
+    if (!draft.trim() || !active || sending) return
     const messageText = draft.trim()
+    setSending(true)
     try {
       const response = await fetch("/api/whatsapp/send", {
         method: "POST",
@@ -204,6 +206,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           message: messageText,
           conversationId: active.id,
           contactName: active.contactName,
+          simulateTyping: true,
         }),
       })
       const result = await response.json()
@@ -230,6 +233,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       setDraft("")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao enviar mensagem.")
+    } finally {
+      setSending(false)
     }
   }
 
@@ -389,6 +394,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 onChange={(event) => setDraft(event.target.value)}
                 className={textareaClass}
                 rows={1}
+                disabled={sending}
                 placeholder="Digite uma mensagem. Enter envia, Shift+Enter quebra linha."
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
@@ -397,10 +403,11 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                   }
                 }}
               />
-              <button className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white" aria-label="Enviar mensagem" type="submit">
+              <button className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white disabled:cursor-not-allowed disabled:opacity-60" aria-label="Enviar mensagem" type="submit" disabled={sending}>
                 <Send size={19} />
               </button>
             </form>
+            {sending && <p className="mt-3 text-xs font-medium text-blue-600">Enviando presence de digitacao e aguardando 3 segundos antes da mensagem...</p>}
           </footer>
         </section>
       </div>
