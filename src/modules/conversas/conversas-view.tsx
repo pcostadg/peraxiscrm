@@ -106,9 +106,13 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     }
 
     void refreshConversations()
+    const interval = window.setInterval(() => {
+      void refreshConversations()
+    }, 3000)
 
     return () => {
       cancelled = true
+      window.clearInterval(interval)
     }
   }, [realtime.tick])
 
