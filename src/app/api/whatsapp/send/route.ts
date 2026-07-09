@@ -15,24 +15,22 @@ export async function POST(request: Request) {
   if (!body?.to || !body.message) return NextResponse.json({ error: "Destino e mensagem sao obrigatorios." }, { status: 400 })
 
   try {
+    const simulatedDelayEnabled = body.simulateTyping !== false
     let presenceResult: unknown = null
-    if (body.simulateTyping !== false) {
+    if (simulatedDelayEnabled) {
       try {
         presenceResult = await sendZApiPresence({ to: body.to, status: "composing" })
-      } catch {
-        presenceResult = { skipped: true }
+      } catch (error) {
+        presenceResult = {
+          simulatedDelay: true,
+          failed: true,
+          reason: error instanceof Error ? error.message : "presence-failed",
+        }
       }
       await wait(3000)
     }
 
     const result = await sendZApiTextMessage({ to: body.to, message: body.message })
-    if (body.simulateTyping !== false) {
-      try {
-        await sendZApiPresence({ to: body.to, status: "paused" })
-      } catch {
-        // Best-effort only.
-      }
-    }
     const records = await listCrmRecords("conversas")
     const existingConversation = Array.isArray(records)
       ? (records as CrmRecord[]).find((record) => {

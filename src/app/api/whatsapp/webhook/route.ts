@@ -30,6 +30,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, ignored: true })
   }
 
+  if (parsed.event === "message" && !parsed.message.trim()) {
+    return NextResponse.json({ received: true, ignored: true, reason: "empty-message" })
+  }
+
   const records = await listCrmRecords("conversas")
   const existingConversation = Array.isArray(records)
     ? (records as CrmRecord[]).find((record) => {

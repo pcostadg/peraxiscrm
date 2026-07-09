@@ -407,7 +407,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 <Send size={19} />
               </button>
             </form>
-            {sending && <p className="mt-3 text-xs font-medium text-blue-600">Enviando presence de digitacao e aguardando 3 segundos antes da mensagem...</p>}
+            {sending && <p className="mt-3 text-xs font-medium text-blue-600">Mostrando digitacao e aguardando 3 segundos antes de enviar a mensagem...</p>}
           </footer>
         </section>
       </div>

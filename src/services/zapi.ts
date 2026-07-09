@@ -219,7 +219,7 @@ function extractMessageText(payload: Record<string, unknown>, kind: string) {
     if (normalized) return normalized
   }
 
-  return kind === "audio" ? "Audio recebido." : "Mensagem recebida."
+  return ""
 }
 
 function normalizeTextCandidate(value: unknown): string {
