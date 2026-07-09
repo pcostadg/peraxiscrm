@@ -5,6 +5,25 @@ type SendZApiTextInput = {
   message: string
 }
 
+export type ParsedZApiWebhook =
+  | {
+      event: "presence"
+      phone: string
+      contactName: string
+      presenceStatus: "available" | "unavailable" | "composing" | "paused" | "recording"
+      raw: Record<string, unknown>
+    }
+  | {
+      event: "message"
+      phone: string
+      contactName: string
+      kind: "texto" | "imagem" | "audio" | "video" | "documento"
+      message: string
+      messageId: string
+      direction: "entrada" | "saida"
+      raw: Record<string, unknown>
+    }
+
 function normalizePhone(value: string) {
   return value.replace(/\D/g, "")
 }
@@ -93,6 +112,17 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
       "Contato Z-API",
   )
 
+  const rawPresenceStatus = String(payload.status ?? "").toUpperCase()
+  if (String(payload.type ?? "") === "PresenceChatCallback" && rawPresenceStatus) {
+    return {
+      event: "presence",
+      phone,
+      contactName,
+      presenceStatus: mapPresenceStatus(rawPresenceStatus),
+      raw: payload,
+    } satisfies ParsedZApiWebhook
+  }
+
   const kind =
     payload.type === "audio" || payload.type === "ptt"
       ? "audio"
@@ -107,6 +137,7 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
   const message = extractMessageText(payload, kind)
 
   return {
+    event: "message",
     phone,
     contactName,
     kind,
@@ -114,6 +145,21 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
     messageId: String(payload.messageId ?? payload.id ?? `${phone}-${Date.now()}`),
     direction: (payload.fromMe === true || payload.isSentByMe === true ? "saida" : "entrada") as "entrada" | "saida",
     raw: payload,
+  } satisfies ParsedZApiWebhook
+}
+
+function mapPresenceStatus(value: string): "available" | "unavailable" | "composing" | "paused" | "recording" {
+  switch (value) {
+    case "AVAILABLE":
+      return "available"
+    case "UNAVAILABLE":
+      return "unavailable"
+    case "COMPOSING":
+      return "composing"
+    case "RECORDING":
+      return "recording"
+    default:
+      return "paused"
   }
 }
 

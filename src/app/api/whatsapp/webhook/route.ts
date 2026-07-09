@@ -39,6 +39,27 @@ export async function POST(request: Request) {
     : null
 
   const previousData = existingConversation?.data as Record<string, unknown> | undefined
+  const conversationId = existingConversation?.id || `conversation-${parsed.phone}`
+
+  if (parsed.event === "presence") {
+    await upsertCrmRecordById("conversas", conversationId, {
+      contactName: parsed.contactName || String(previousData?.contactName ?? parsed.phone),
+      phone: parsed.phone,
+      source: String(previousData?.source ?? "manual"),
+      unread: Number(previousData?.unread ?? 0),
+      assignedTo: String(previousData?.assignedTo ?? "Equipe"),
+      tags: Array.isArray(previousData?.tags) ? previousData.tags : ["z-api"],
+      lastMessage: String(previousData?.lastMessage ?? "Conversa iniciada."),
+      updatedAt: "agora",
+      messages: Array.isArray(previousData?.messages) ? previousData.messages : [],
+      presenceStatus: parsed.presenceStatus,
+      status: "aberta",
+      rawLastWebhook: parsed.raw,
+    })
+
+    return NextResponse.json({ received: true, event: "presence" })
+  }
+
   const previousMessages = Array.isArray(previousData?.messages) ? previousData.messages : []
   const nextMessage = {
     id: parsed.messageId,
@@ -49,16 +70,17 @@ export async function POST(request: Request) {
     time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
   }
 
-  await upsertCrmRecordById("conversas", existingConversation?.id || `conversation-${parsed.phone}`, {
+  await upsertCrmRecordById("conversas", conversationId, {
     contactName: parsed.contactName || String(previousData?.contactName ?? parsed.phone),
     phone: parsed.phone,
-    source: "manual",
+    source: String(previousData?.source ?? "manual"),
     unread: parsed.direction === "entrada" ? Number(previousData?.unread ?? 0) + 1 : Number(previousData?.unread ?? 0),
     assignedTo: String(previousData?.assignedTo ?? "Equipe"),
     tags: Array.isArray(previousData?.tags) ? previousData.tags : ["z-api"],
     lastMessage: parsed.message,
     updatedAt: "agora",
     messages: [...previousMessages, nextMessage],
+    presenceStatus: parsed.direction === "entrada" ? "paused" : previousData?.presenceStatus,
     status: "aberta",
     rawLastWebhook: parsed.raw,
   })

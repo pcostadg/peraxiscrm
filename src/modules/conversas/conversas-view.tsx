@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { AudioLines, File, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Video } from "lucide-react"
-import { agents, chatMessages, conversations } from "@/modules/shared/data"
+import { File, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Video } from "lucide-react"
+import { chatMessages, conversations } from "@/modules/shared/data"
 import { ModuleHeader, Pill, inputClass, textareaClass } from "@/modules/shared/components"
 import { useRealtimeSync } from "@/services/use-realtime-sync"
 import type { CrmRecord } from "@/services/crm-repository"
@@ -49,6 +49,14 @@ function conversationFromRecord(record: CrmRecord): Conversation {
     tags: Array.isArray(data.tags) ? data.tags.map(String) : ["z-api"],
     lastMessage: String(data.lastMessage ?? data.message ?? "Conversa iniciada."),
     updatedAt: String(data.updatedAt ?? "agora"),
+    presenceStatus:
+      data.presenceStatus === "available" ||
+      data.presenceStatus === "unavailable" ||
+      data.presenceStatus === "composing" ||
+      data.presenceStatus === "paused" ||
+      data.presenceStatus === "recording"
+        ? data.presenceStatus
+        : undefined,
   }
 }
 
@@ -129,6 +137,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
 
   const active = conversationItems.find((item) => item.id === activeId) ?? conversationItems[0]
   const messages = messageItems.filter((message) => message.conversationId === active?.id)
+  const activePresenceLabel = getPresenceLabel(active?.presenceStatus)
 
   async function handleStartConversation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -234,7 +243,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       <ModuleHeader
         icon={MessageCircle}
         title="Conversas"
-        description="Central da Z-API com inicio manual de atendimento, visual limpo e preparacao para fluxo em tempo real pelo backend."
+        description="Central de atendimento com inicio manual de conversas, mensagens e audio integrados ao backend."
         action={
           <div className="flex items-center gap-2">
             <Pill tone={realtime.status === "tempo real" ? "emerald" : "amber"}>{realtime.status}</Pill>
@@ -261,23 +270,6 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 </button>
               ))}
             </div>
-
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2">
-                <AudioLines size={16} className="text-blue-600" />
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Z-API em preparo</p>
-              </div>
-              <p className="mt-2 text-sm text-slate-600">
-                A tela foi adaptada para operar com conversas, mensagens e audio a partir da Z-API via backend seguro.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {agents.map((agent) => (
-                  <Pill key={agent.id} tone={agent.status === "ativo" ? "emerald" : "slate"}>
-                    {agent.nome}
-                  </Pill>
-                ))}
-              </div>
-            </div>
           </div>
 
           <div className="max-h-[640px] overflow-y-auto">
@@ -299,6 +291,9 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                       <small className="text-xs text-slate-400">{item.updatedAt}</small>
                     </span>
                     <span className="mt-1 block truncate text-xs text-slate-500">{item.lastMessage}</span>
+                    {item.presenceStatus && item.presenceStatus !== "paused" && item.presenceStatus !== "unavailable" && (
+                      <span className="mt-1 block text-[11px] font-semibold text-emerald-600">{getPresenceLabel(item.presenceStatus)}</span>
+                    )}
                     <span className="mt-2 flex flex-wrap gap-1">
                       {item.tags.map((tag) => (
                         <Pill key={tag} tone={tag === "manual" ? "blue" : "emerald"}>
@@ -328,6 +323,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               <p className="text-xs text-slate-500">
                 {active ? `${active.phone || "Sem telefone"} · ${active.assignedTo} · origem ${active.source}` : "Inicie uma conversa manual para começar."}
               </p>
+              {activePresenceLabel && <p className="mt-1 text-xs font-semibold text-emerald-600">{activePresenceLabel}</p>}
             </div>
             <Pill tone="blue">Z-API via backend</Pill>
           </header>
@@ -452,4 +448,17 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       </Dialog>
     </div>
   )
+}
+
+function getPresenceLabel(status?: Conversation["presenceStatus"]) {
+  switch (status) {
+    case "available":
+      return "Cliente online"
+    case "composing":
+      return "Cliente digitando..."
+    case "recording":
+      return "Cliente gravando audio..."
+    default:
+      return ""
+  }
 }

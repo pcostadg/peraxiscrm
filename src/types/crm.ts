@@ -10,6 +10,7 @@ export type ConversationSource = "chatbot" | "anuncio" | "disparo" | "manual"
 export type MessageKind = "texto" | "imagem" | "audio" | "video" | "documento"
 export type MessageDirection = "entrada" | "saida"
 export type DispatchStatus = "enviado" | "entregue" | "lido" | "falha" | "pendente"
+export type ConversationPresenceStatus = "available" | "unavailable" | "composing" | "paused" | "recording"
 export type FinanceType = "entrada" | "saida"
 export type RecurringStatus = "ativo" | "pausado" | "cancelado"
 export type NotificationStatus = "em_dia" | "proximo" | "atrasado"
@@ -50,6 +51,7 @@ export type Conversation = {
   tags: string[]
   lastMessage: string
   updatedAt: string
+  presenceStatus?: ConversationPresenceStatus
 }
 
 export type ChatMessage = {
