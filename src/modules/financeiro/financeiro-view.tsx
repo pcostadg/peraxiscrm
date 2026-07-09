@@ -220,14 +220,14 @@ export function FinanceiroView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) 
       </PanelCard>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
+        <DialogContent className="w-[min(96vw,1240px)] max-w-[min(96vw,1240px)] overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
           <form onSubmit={handleSaveEntry}>
-            <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-6">
+            <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
               <DialogTitle>{editingId ? "Editar lançamento" : "Novo Lançamento"}</DialogTitle>
               <DialogDescription>Cadastro financeiro em popup, com largura confortável e salvamento real.</DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-5 px-8 py-7 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-6 px-8 py-8 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               <Field label="Tipo"><select className={inputClass} value={form.tipo} onChange={(event) => setForm((current) => ({ ...current, tipo: event.target.value as FinanceFormState["tipo"] }))}><option value="entrada">entrada</option><option value="saida">saida</option></select></Field>
               <Field label="Descrição"><input className={inputClass} value={form.descricao} onChange={(event) => setForm((current) => ({ ...current, descricao: event.target.value }))} placeholder="Descrição" /></Field>
               <Field label="Categoria"><input className={inputClass} value={form.categoria} onChange={(event) => setForm((current) => ({ ...current, categoria: event.target.value }))} placeholder="Categoria" /></Field>
@@ -238,9 +238,9 @@ export function FinanceiroView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) 
               <Field label="Projeto"><input className={inputClass} value={form.projeto} onChange={(event) => setForm((current) => ({ ...current, projeto: event.target.value }))} placeholder="Opcional" /></Field>
             </div>
 
-            <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-5">
-              <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>Cancelar</button>
-              <button type="submit" className={buttonClass}>Salvar</button>
+            <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-6">
+              <button type="button" className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>Cancelar</button>
+              <button type="submit" className={`${buttonClass} min-w-36 px-5`}>Salvar</button>
             </DialogFooter>
           </form>
         </DialogContent>

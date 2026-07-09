@@ -369,14 +369,14 @@ export function RecorrentesView({ dbRecords = [], leadRecords = [] }: { dbRecord
       </PanelCard>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-5xl overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
+        <DialogContent className="w-[min(96vw,1320px)] max-w-[min(96vw,1320px)] overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
           <form onSubmit={handleSaveInvoice}>
-            <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-6">
+            <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
               <DialogTitle>{editingId ? "Editar fatura" : "Nova fatura"}</DialogTitle>
               <DialogDescription>Cadastro bonito e amplo para controlar cobrança, vencimento e parcelamento.</DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-5 px-8 py-7 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-6 px-8 py-8 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               <Field label="Cliente"><input className={inputClass} value={form.cliente} onChange={(event) => setForm((current) => ({ ...current, cliente: event.target.value }))} placeholder="Nome do cliente" /></Field>
               <Field label="Telefone"><input className={inputClass} value={form.telefone} onChange={(event) => setForm((current) => ({ ...current, telefone: formatPhone(event.target.value) }))} placeholder="(00) 00000-0000" /></Field>
               <Field label="Plano"><input className={inputClass} value={form.plano} onChange={(event) => setForm((current) => ({ ...current, plano: event.target.value }))} placeholder="Plano ou contrato" /></Field>
@@ -393,9 +393,9 @@ export function RecorrentesView({ dbRecords = [], leadRecords = [] }: { dbRecord
               ) : null}
             </div>
 
-            <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-5">
-              <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>Cancelar</button>
-              <button type="submit" className={buttonClass} disabled={saving}>Salvar</button>
+            <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-6">
+              <button type="button" className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>Cancelar</button>
+              <button type="submit" className={`${buttonClass} min-w-36 px-5`} disabled={saving}>Salvar</button>
             </DialogFooter>
           </form>
         </DialogContent>
