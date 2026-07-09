@@ -555,9 +555,9 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
         }
       />
 
-      <div className="grid min-h-[720px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] xl:grid-cols-[360px_1fr]">
-        <aside className="border-b border-slate-200 bg-slate-50/70 xl:border-r xl:border-b-0">
-          <div className="border-b border-slate-200 p-4">
+      <div className="grid h-[calc(100vh-13rem)] min-h-[720px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] xl:grid-cols-[360px_1fr]">
+        <aside className="flex min-h-0 flex-col border-b border-slate-200 bg-slate-50/70 xl:border-r xl:border-b-0">
+          <div className="shrink-0 border-b border-slate-200 p-4">
             <div className="flex flex-wrap gap-2">
               {filters.map((item) => (
                 <button
@@ -597,7 +597,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             </div>
           </div>
 
-          <div className="max-h-[640px] overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgb(203_213_225)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
             {filtered.length ? (
               filtered.map((item) => (
                 <button
@@ -641,8 +641,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           </div>
         </aside>
 
-        <section className="flex min-h-[720px] flex-col overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)]">
-          <header className="flex items-center justify-between border-b border-slate-200 bg-white/80 p-4 backdrop-blur">
+        <section className="flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)]">
+          <header className="shrink-0 flex items-center justify-between border-b border-slate-200 bg-white/80 p-4 backdrop-blur">
             <div>
               <h3 className="font-bold text-slate-900">{active?.contactName || "Nenhuma conversa selecionada"}</h3>
               <p className="text-xs text-slate-500">
@@ -711,7 +711,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             )}
           </div>
 
-          <footer className="border-t border-slate-200 bg-white p-4">
+          <footer className="shrink-0 border-t border-slate-200 bg-white p-4">
             <div className="mb-3 flex flex-wrap gap-2">
               {attachmentTypes.map((item) => {
                 const Icon = item.icon
