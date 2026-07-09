@@ -1032,16 +1032,16 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg bg-white p-0">
+        <DialogContent className="w-[min(96vw,760px)] max-w-[min(96vw,760px)] overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
           <form onSubmit={handleStartConversation}>
-            <DialogHeader className="border-b border-slate-200 px-6 py-5">
+            <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
               <DialogTitle>Chamar novo numero</DialogTitle>
               <DialogDescription>
                 Crie manualmente uma conversa para a operacao iniciar o atendimento antes mesmo da primeira mensagem recebida.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-4 px-6 py-5">
+            <div className="grid gap-5 px-8 py-8">
               <div className="inline-flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <Plus size={16} className="mt-0.5" />
                 <span>As credenciais reais da Z-API devem continuar fora do frontend. Esta tela esta pronta para conversar com o backend da instancia.</span>
@@ -1060,11 +1060,11 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               </div>
             </div>
 
-            <DialogFooter className="border-slate-200 bg-slate-50">
-              <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
+            <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-6">
+              <button type="button" className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </button>
-              <button type="submit" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white">
+              <button type="submit" className="inline-flex h-11 min-w-40 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white">
                 <PhoneCall size={16} />
                 Iniciar conversa
               </button>
@@ -1074,15 +1074,15 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       </Dialog>
 
       <Dialog open={tagDialogOpen} onOpenChange={setTagDialogOpen}>
-        <DialogContent className="max-w-lg bg-white p-0">
-          <DialogHeader className="border-b border-slate-200 px-6 py-5">
+        <DialogContent className="w-[min(96vw,760px)] max-w-[min(96vw,760px)] overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
+          <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
             <DialogTitle>Etiquetas do contato</DialogTitle>
             <DialogDescription>
               Selecione etiquetas existentes ou crie novas para organizar esse contato.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 px-6 py-5">
+          <div className="space-y-5 px-8 py-8">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Etiquetas atuais</p>
               <div className="mt-3 flex flex-wrap gap-2">

@@ -269,16 +269,16 @@ export function AgentesView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl bg-white p-0">
+        <DialogContent className="w-[min(96vw,1320px)] max-w-[min(96vw,1320px)] overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
           <form onSubmit={handleSaveAgent}>
-            <DialogHeader className="border-b border-slate-200 px-6 py-5">
+            <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
               <DialogTitle>{editingAgentId ? "Editar agente" : "Novo agente Z-API"}</DialogTitle>
               <DialogDescription>
                 Cadastre os dados operacionais da instancia. O ideal e persistir as credenciais reais no backend, nunca em componentes publicos.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-4 px-6 py-5 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-6 px-8 py-8 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               <Field label="Nome"><input required className={inputClass} value={form.nome} onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))} placeholder="Agente comercial" /></Field>
               <Field label="Status"><select className={inputClass} value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as Agent["status"] }))}><option value="ativo">ativo</option><option value="inativo">inativo</option></select></Field>
               <Field label="Numero"><input className={inputClass} value={form.numero} onChange={(event) => setForm((current) => ({ ...current, numero: event.target.value }))} placeholder="+5511999999999" /></Field>
@@ -294,11 +294,11 @@ export function AgentesView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               </div>
             </div>
 
-            <DialogFooter className="border-slate-200 bg-slate-50">
-              <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
+            <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-6">
+              <button type="button" className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </button>
-              <button type="submit" className={buttonClass}>
+              <button type="submit" className={`${buttonClass} min-w-36 px-5`}>
                 {editingAgentId ? "Salvar alteracoes" : "Salvar agente"}
               </button>
             </DialogFooter>

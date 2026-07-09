@@ -225,16 +225,16 @@ export function EquipeView({ user, dbUsers = [] }: { user: SessionUser; dbUsers?
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl bg-white p-0">
+        <DialogContent className="w-[min(96vw,1180px)] max-w-[min(96vw,1180px)] overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
           <form onSubmit={handleSaveMember}>
-            <DialogHeader className="border-b border-slate-200 px-6 py-5">
+            <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
               <DialogTitle>{editingMemberId ? "Editar usuario" : "Novo usuario"}</DialogTitle>
               <DialogDescription>
                 O cadastro foi movido para pop-up e agora possui acao explicita de salvar.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-4 px-6 py-5 lg:grid-cols-2">
+            <div className="grid gap-6 px-8 py-8 xl:grid-cols-2">
               <Field label="Nome"><input required className={inputClass} value={form.nome} onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))} placeholder="Nome completo" /></Field>
               <Field label="Email"><input className={inputClass} type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="email@empresa.com" /></Field>
               <Field label="Telefone"><input className={inputClass} value={form.telefone} onChange={(event) => setForm((current) => ({ ...current, telefone: event.target.value }))} placeholder="5511999999999" /></Field>
@@ -243,11 +243,11 @@ export function EquipeView({ user, dbUsers = [] }: { user: SessionUser; dbUsers?
               <Field label="Status"><select className={inputClass} value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as TeamMember["status"] }))}><option value="ativo">ativo</option><option value="inativo">inativo</option></select></Field>
             </div>
 
-            <DialogFooter className="border-slate-200 bg-slate-50">
-              <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
+            <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-6">
+              <button type="button" className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </button>
-              <button type="submit" className={buttonClass}>
+              <button type="submit" className={`${buttonClass} min-w-36 px-5`}>
                 Salvar cadastro
               </button>
             </DialogFooter>
