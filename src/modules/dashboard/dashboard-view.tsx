@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, CircleDollarSign, Clock3, FolderKanban, MessageCircle, Rocket, TrendingUp, Users } from "lucide-react"
+import { BarChart3, CircleDollarSign, Clock3, FolderKanban, MessageCircle, TrendingUp, Users } from "lucide-react"
 import { dashboardChartSeries, dashboardMetrics, dispatchReports, financeEntries, leads, projects } from "@/modules/shared/data"
 import { ModuleHeader, PanelCard, Pill } from "@/modules/shared/components"
 import { cn } from "@/lib/utils"
@@ -11,7 +11,6 @@ const icons = {
   faturamento: CircleDollarSign,
   leads: Users,
   conversas: MessageCircle,
-  disparos: Rocket,
   ativos: FolderKanban,
   pendentes: Clock3,
 }
@@ -32,10 +31,9 @@ export function DashboardView({ dbCounts }: { dbCounts?: { leads: number; conver
     if (!dbCounts) return metric
     if (metric.id === "leads") return { ...metric, value: String(dbCounts.leads) }
     if (metric.id === "conversas") return { ...metric, value: String(dbCounts.conversas) }
-    if (metric.id === "disparos") return { ...metric, value: String(dbCounts.disparos) }
     if (metric.id === "ativos") return { ...metric, value: String(dbCounts.projetos) }
     return metric
-  })
+  }).filter((metric) => metric.id !== "disparos")
   const activeMetric = metrics.find((metric) => metric.id === activeId) ?? metrics[0]
   const activeSeries = activeMetric.series.length > 0 ? activeMetric.series : [0]
   const maxValue = Math.max(1, ...activeSeries)

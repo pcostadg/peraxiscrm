@@ -80,6 +80,11 @@ export type Lead = {
   email: string
   cpfCnpj: string
   endereco: string
+  enderecoNumero?: string
+  bairro?: string
+  cidade?: string
+  estado?: string
+  cep?: string
   origem: ConversationSource | "indicacao" | "site"
   status: LeadStatus
   observacoes: string
@@ -89,6 +94,8 @@ export type Lead = {
   vencimento: string
   responsavel: string
   formaPagamento: string
+  quantidadeParcelas?: number
+  valorParcela?: number
   statusPagamento: PaymentStatus
 }
 
@@ -132,6 +139,8 @@ export type FinanceEntry = {
   formaPagamento: string
   lead?: string
   projeto?: string
+  recorrenciaId?: string
+  status?: PaymentStatus
 }
 
 export type AgentFlowStep = {
@@ -173,6 +182,28 @@ export type RecurringClient = {
   valorAPagar: number
   vencimento: string
   status: RecurringStatus
+  formaPagamento?: string
+  quantidadeParcelas?: number
+  valorParcela?: number
+  pago?: boolean
+  observacoes?: string
+}
+
+export type TaskPriority = "baixa" | "media" | "alta" | "urgente"
+
+export type TaskStage = {
+  id: string
+  title: string
+}
+
+export type TaskCard = {
+  id: string
+  nome: string
+  prioridade: TaskPriority
+  responsavel: string
+  prazo: string
+  descricao: string
+  status: string
 }
 
 export type PaymentNotification = {

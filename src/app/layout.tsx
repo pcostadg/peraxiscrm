@@ -16,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className="bg-[var(--background)] text-[var(--foreground)] antialiased">
-        <ThemeProvider attribute="class" forcedTheme="light" enableSystem={false}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           {children}
           <Toaster richColors position="top-right" />
         </ThemeProvider>

@@ -6,6 +6,7 @@ export const ROUTES = {
   CONVERSAS: "/painel/conversas",
   LEADS: "/painel/leads",
   PROJETOS: "/painel/projetos",
+  TAREFAS: "/painel/tarefas",
   DISPAROS: "/painel/disparos",
   RECORRENTES: "/painel/recorrentes",
   NOTIFICAR: "/painel/notificar",
@@ -30,6 +31,7 @@ export const ROUTES = {
   API_AGENTES: "/api/agentes",
   API_EQUIPE: "/api/equipe",
   API_PROJETOS: "/api/projetos",
+  API_TAREFAS: "/api/tarefas",
   API_CONFIGURACOES: "/api/configuracoes",
 } as const
 
@@ -40,6 +42,7 @@ export const PANEL_ROUTES = [
   ROUTES.CONVERSAS,
   ROUTES.LEADS,
   ROUTES.PROJETOS,
+  ROUTES.TAREFAS,
   ROUTES.DISPAROS,
   ROUTES.RECORRENTES,
   ROUTES.NOTIFICAR,

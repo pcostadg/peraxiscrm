@@ -731,7 +731,6 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       <ModuleHeader
         icon={MessageCircle}
         title="Conversas"
-        description="Central de atendimento com inicio manual de conversas, mensagens e audio integrados ao backend."
         action={
           <div className="flex items-center gap-2">
             <Pill tone={realtime.status === "tempo real" ? "emerald" : "amber"}>{realtime.status}</Pill>

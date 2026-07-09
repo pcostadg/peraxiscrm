@@ -31,6 +31,11 @@ type LeadFormState = {
   email: string
   cpfCnpj: string
   endereco: string
+  enderecoNumero: string
+  bairro: string
+  cidade: string
+  estado: string
+  cep: string
   origem: Lead["origem"]
   status: string
   observacoes: string
@@ -40,6 +45,8 @@ type LeadFormState = {
   vencimento: string
   responsavel: string
   formaPagamento: string
+  quantidadeParcelas: string
+  valorParcela: string
   statusPagamento: Lead["statusPagamento"]
 }
 
@@ -58,6 +65,11 @@ const emptyLeadForm: LeadFormState = {
   email: "",
   cpfCnpj: "",
   endereco: "",
+  enderecoNumero: "",
+  bairro: "",
+  cidade: "",
+  estado: "",
+  cep: "",
   origem: "manual",
   status: "novo",
   observacoes: "",
@@ -67,6 +79,8 @@ const emptyLeadForm: LeadFormState = {
   vencimento: "",
   responsavel: "",
   formaPagamento: "Pix",
+  quantidadeParcelas: "",
+  valorParcela: "",
   statusPagamento: "pendente",
 }
 
@@ -95,6 +109,11 @@ function leadFromRecord(record: CrmRecord): LeadRecord {
     email: String(data.email ?? ""),
     cpfCnpj: String(data.cpfCnpj ?? ""),
     endereco: String(data.endereco ?? ""),
+    enderecoNumero: String(data.enderecoNumero ?? ""),
+    bairro: String(data.bairro ?? ""),
+    cidade: String(data.cidade ?? ""),
+    estado: String(data.estado ?? ""),
+    cep: String(data.cep ?? ""),
     origem: (data.origem as Lead["origem"]) ?? "manual",
     status: String(record.status ?? data.status ?? "novo"),
     observacoes: String(data.observacoes ?? ""),
@@ -104,6 +123,8 @@ function leadFromRecord(record: CrmRecord): LeadRecord {
     vencimento: String(data.vencimento ?? ""),
     responsavel: String(data.responsavel ?? ""),
     formaPagamento: String(data.formaPagamento ?? "Pix"),
+    quantidadeParcelas: Number(data.quantidadeParcelas ?? 0) || undefined,
+    valorParcela: Number(data.valorParcela ?? 0) || undefined,
     statusPagamento: (data.statusPagamento as Lead["statusPagamento"]) ?? "pendente",
   }
 }
@@ -149,6 +170,11 @@ function formFromLead(lead: LeadRecord): LeadFormState {
     email: lead.email,
     cpfCnpj: formatCpfCnpj(lead.cpfCnpj),
     endereco: lead.endereco,
+    enderecoNumero: lead.enderecoNumero ?? "",
+    bairro: lead.bairro ?? "",
+    cidade: lead.cidade ?? "",
+    estado: lead.estado ?? "",
+    cep: lead.cep ?? "",
     origem: lead.origem,
     status: lead.status,
     observacoes: lead.observacoes,
@@ -158,6 +184,8 @@ function formFromLead(lead: LeadRecord): LeadFormState {
     vencimento: lead.vencimento,
     responsavel: lead.responsavel,
     formaPagamento: lead.formaPagamento,
+    quantidadeParcelas: lead.quantidadeParcelas ? String(lead.quantidadeParcelas) : "",
+    valorParcela: lead.valorParcela ? formatCurrency(String(lead.valorParcela)) : "",
     statusPagamento: lead.statusPagamento,
   }
 }
@@ -177,6 +205,7 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [draggingLeadId, setDraggingLeadId] = useState<string | null>(null)
   const [form, setForm] = useState<LeadFormState>(emptyLeadForm)
   const [savingStages, setSavingStages] = useState(false)
+  const [loadingCep, setLoadingCep] = useState(false)
 
   const filteredLeads = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -221,6 +250,11 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       email: form.email,
       cpfCnpj: form.cpfCnpj,
       endereco: form.endereco,
+      enderecoNumero: form.enderecoNumero,
+      bairro: form.bairro,
+      cidade: form.cidade,
+      estado: form.estado,
+      cep: form.cep,
       origem: form.origem,
       status: form.status,
       observacoes: form.observacoes,
@@ -230,6 +264,8 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       vencimento: form.vencimento,
       responsavel: form.responsavel,
       formaPagamento: form.formaPagamento,
+      quantidadeParcelas: form.formaPagamento === "Parcelado" ? Number(form.quantidadeParcelas || 0) : undefined,
+      valorParcela: form.formaPagamento === "Parcelado" ? Number(form.valorParcela.replace(/\D/g, "")) / 100 || 0 : undefined,
       statusPagamento: form.statusPagamento,
     }
 
@@ -384,6 +420,30 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
 
   function moveLeadToStage(leadId: string, stageId: string) {
     setLeadItems((current) => current.map((item) => (item.id === leadId ? { ...item, status: stageId } : item)))
+  }
+
+  async function handleCepBlur() {
+    const normalizedCep = form.cep.replace(/\D/g, "")
+    if (normalizedCep.length !== 8) return
+
+    setLoadingCep(true)
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${normalizedCep}/json/`)
+      const result = await response.json()
+      if (!response.ok || result.erro) throw new Error("CEP nao encontrado.")
+
+      setForm((current) => ({
+        ...current,
+        endereco: String(result.logradouro ?? current.endereco),
+        bairro: String(result.bairro ?? current.bairro),
+        cidade: String(result.localidade ?? current.cidade),
+        estado: String(result.uf ?? current.estado),
+      }))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao consultar o CEP.")
+    } finally {
+      setLoadingCep(false)
+    }
   }
 
   return (
@@ -568,21 +628,26 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       </PanelCard>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl bg-white p-0">
+        <DialogContent className="max-w-6xl overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.5)]">
           <form onSubmit={handleSaveLead}>
-            <DialogHeader className="border-b border-slate-200 px-6 py-5">
+            <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eff6ff_0%,#ffffff_75%)] px-8 py-6">
               <DialogTitle>{editingLeadId ? "Editar lead" : "Novo lead"}</DialogTitle>
               <DialogDescription>
-                O cadastro agora acontece por pop-up para a lista e o kanban ficarem livres para operacao.
+                Cadastro comercial completo, com parcelamento e endereco detalhado para a operacao do time.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-4 px-6 py-5 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-5 px-8 py-7 md:grid-cols-2 xl:grid-cols-4">
               <Field label="Nome"><input required className={inputClass} value={form.nome} onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))} placeholder="Nome completo" /></Field>
               <Field label="Telefone"><input className={inputClass} inputMode="tel" value={form.telefone} onChange={(event) => setForm((current) => ({ ...current, telefone: formatPhone(event.target.value) }))} placeholder="(00) 00000-0000" /></Field>
               <Field label="Email"><input className={inputClass} type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="cliente@email.com" /></Field>
               <Field label="CPF/CNPJ"><input className={inputClass} inputMode="numeric" value={form.cpfCnpj} onChange={(event) => setForm((current) => ({ ...current, cpfCnpj: formatCpfCnpj(event.target.value) }))} placeholder="000.000.000-00" /></Field>
-              <Field label="Endereco"><input className={inputClass} value={form.endereco} onChange={(event) => setForm((current) => ({ ...current, endereco: event.target.value }))} placeholder="Rua, numero, cidade" /></Field>
+              <Field label="CEP"><input className={inputClass} inputMode="numeric" value={form.cep} onBlur={() => void handleCepBlur()} onChange={(event) => setForm((current) => ({ ...current, cep: event.target.value }))} placeholder="00000-000" /></Field>
+              <Field label="Endereco"><input className={inputClass} value={form.endereco} onChange={(event) => setForm((current) => ({ ...current, endereco: event.target.value }))} placeholder="Rua / logradouro" /></Field>
+              <Field label="Numero"><input className={inputClass} value={form.enderecoNumero} onChange={(event) => setForm((current) => ({ ...current, enderecoNumero: event.target.value }))} placeholder="123" /></Field>
+              <Field label="Bairro"><input className={inputClass} value={form.bairro} onChange={(event) => setForm((current) => ({ ...current, bairro: event.target.value }))} placeholder="Centro" /></Field>
+              <Field label="Cidade"><input className={inputClass} value={form.cidade} onChange={(event) => setForm((current) => ({ ...current, cidade: event.target.value }))} placeholder="Cidade" /></Field>
+              <Field label="Estado"><input className={inputClass} value={form.estado} onChange={(event) => setForm((current) => ({ ...current, estado: event.target.value }))} placeholder="UF" maxLength={2} /></Field>
               <Field label="Origem"><select className={inputClass} value={form.origem} onChange={(event) => setForm((current) => ({ ...current, origem: event.target.value as Lead["origem"] }))}><option value="manual">manual</option><option value="chatbot">chatbot</option><option value="anuncio">anuncio</option><option value="site">site</option><option value="indicacao">indicacao</option></select></Field>
               <Field label="Etapa"><select className={inputClass} value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>{stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.title}</option>)}</select></Field>
               <Field label="Responsavel"><input className={inputClass} value={form.responsavel} onChange={(event) => setForm((current) => ({ ...current, responsavel: event.target.value }))} placeholder="Funcionario" /></Field>
@@ -591,6 +656,12 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               <Field label="Valor"><input className={inputClass} inputMode="numeric" value={form.valor} onChange={(event) => setForm((current) => ({ ...current, valor: formatCurrency(event.target.value) }))} placeholder="R$ 0,00" /></Field>
               <Field label="Vencimento"><input className={inputClass} type="date" value={form.vencimento} onChange={(event) => setForm((current) => ({ ...current, vencimento: event.target.value }))} /></Field>
               <Field label="Forma de pagamento"><select className={inputClass} value={form.formaPagamento} onChange={(event) => setForm((current) => ({ ...current, formaPagamento: event.target.value }))}><option>Pix</option><option>Cartao</option><option>Boleto</option><option>Dinheiro</option><option>Parcelado</option></select></Field>
+              {form.formaPagamento === "Parcelado" && (
+                <>
+                  <Field label="Quantidade de parcelas"><input className={inputClass} inputMode="numeric" value={form.quantidadeParcelas} onChange={(event) => setForm((current) => ({ ...current, quantidadeParcelas: event.target.value }))} placeholder="Ex.: 12" /></Field>
+                  <Field label="Valor da parcela"><input className={inputClass} inputMode="numeric" value={form.valorParcela} onChange={(event) => setForm((current) => ({ ...current, valorParcela: formatCurrency(event.target.value) }))} placeholder="R$ 0,00" /></Field>
+                </>
+              )}
               <Field label="Status de pagamento"><select className={inputClass} value={form.statusPagamento} onChange={(event) => setForm((current) => ({ ...current, statusPagamento: event.target.value as Lead["statusPagamento"] }))}><option value="pendente">pendente</option><option value="pago">pago</option><option value="atrasado">atrasado</option><option value="cancelado">cancelado</option></select></Field>
               <div className="md:col-span-2 xl:col-span-4">
                 <Field label="Observacoes">
@@ -599,7 +670,8 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               </div>
             </div>
 
-            <DialogFooter className="border-slate-200 bg-slate-50">
+            <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-5">
+              {loadingCep ? <span className="mr-auto text-sm font-medium text-blue-600">Buscando endereco pelo CEP...</span> : <span className="mr-auto text-sm text-slate-500">Use o CEP para preencher endereco, bairro, cidade e estado automaticamente.</span>}
               <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </button>

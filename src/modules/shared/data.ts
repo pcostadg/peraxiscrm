@@ -17,7 +17,6 @@ export const dashboardMetrics: DashboardMetric[] = [
   { id: "faturamento", title: "Faturamento", value: "R$ 0,00", hint: "Receitas confirmadas", trend: "0 no periodo", tone: "emerald", series: [0, 0, 0, 0, 0, 0, 0] },
   { id: "leads", title: "Leads fechados", value: "0", hint: "Clientes convertidos", trend: "0 novos", tone: "blue", series: [0, 0, 0, 0, 0, 0, 0] },
   { id: "conversas", title: "Conversas", value: "0", hint: "Atendimentos totais", trend: "0 abertas", tone: "violet", series: [0, 0, 0, 0, 0, 0, 0] },
-  { id: "disparos", title: "Disparos", value: "0", hint: "Mensagens processadas", trend: "0 enviados", tone: "amber", series: [0, 0, 0, 0, 0, 0, 0] },
   { id: "ativos", title: "Projetos ativos", value: "0", hint: "Operacao em andamento", trend: "0 em andamento", tone: "slate", series: [0, 0, 0, 0, 0, 0, 0] },
   { id: "pendentes", title: "Projetos pendentes", value: "0", hint: "Aguardando inicio ou aprovacao", trend: "0 pendentes", tone: "rose", series: [0, 0, 0, 0, 0, 0, 0] },
 ]

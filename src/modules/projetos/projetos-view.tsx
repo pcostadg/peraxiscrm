@@ -50,6 +50,21 @@ function titleFromStage(id: string) {
     .join(" ")
 }
 
+function projectPriorityTone(priority: ProjectPriority) {
+  switch (priority) {
+    case "baixa":
+      return "emerald"
+    case "media":
+      return "amber"
+    case "alta":
+      return "orange"
+    case "urgente":
+      return "rose"
+    default:
+      return "blue"
+  }
+}
+
 function normalizeStageId(value: string) {
   return value
     .normalize("NFD")
@@ -77,6 +92,10 @@ function projectFromRecord(record: CrmRecord): ProjectRecord {
 
 function isProjectBoardConfigRecord(record: CrmRecord) {
   return record.data?.recordType === "project_stage_config"
+}
+
+function isTaskRecord(record: CrmRecord) {
+  return record.data?.recordType === "task" || record.data?.recordType === "task_stage_config"
 }
 
 function getProjectBoardConfig(records: CrmRecord[]): ProjectBoardConfig {
@@ -122,8 +141,9 @@ function formFromProject(project: ProjectRecord): ProjectFormState {
 }
 
 export function ProjetosView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
-  const projectRecords = dbRecords.filter((record) => !isProjectBoardConfigRecord(record))
-  const boardConfig = getProjectBoardConfig(dbRecords)
+  const sanitizedRecords = dbRecords.filter((record) => !isTaskRecord(record))
+  const projectRecords = sanitizedRecords.filter((record) => !isProjectBoardConfigRecord(record))
+  const boardConfig = getProjectBoardConfig(sanitizedRecords)
   const initialProjects = projectRecords.length ? projectRecords.map(projectFromRecord) : projects
   const [viewMode, setViewMode] = useState<"lista" | "kanban">("kanban")
   const [projectItems, setProjectItems] = useState<ProjectRecord[]>(initialProjects)
@@ -493,7 +513,7 @@ export function ProjetosView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
 
                         <p className="mt-3 text-sm text-slate-500">{project.descricao || "Sem descricao cadastrada."}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <Pill tone={project.prioridade === "alta" || project.prioridade === "urgente" ? "rose" : "blue"}>{project.prioridade}</Pill>
+                          <Pill tone={projectPriorityTone(project.prioridade)}>{project.prioridade}</Pill>
                           <Pill tone="slate">{project.prazo || "Sem prazo"}</Pill>
                         </div>
                         <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
@@ -526,22 +546,28 @@ export function ProjetosView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       </PanelCard>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl bg-white p-0">
+        <DialogContent className="max-w-5xl overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
           <form onSubmit={handleSaveProject}>
-            <DialogHeader className="border-b border-slate-200 px-6 py-5">
+            <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-6">
               <DialogTitle>{editingProjectId ? "Editar projeto" : "Novo projeto"}</DialogTitle>
               <DialogDescription>
-                O cadastro e as alteracoes acontecem em pop-up para manter o kanban como tela principal.
+                Um popup mais largo para cadastrar prioridades, prazo e escopo sem apertar a operacao do kanban.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-4 px-6 py-5 lg:grid-cols-2">
+            <div className="grid gap-5 px-8 py-7 lg:grid-cols-2">
               <Field label="Cliente vinculado"><input className={inputClass} value={form.cliente} onChange={(event) => setForm((current) => ({ ...current, cliente: event.target.value }))} placeholder="Nome do cliente" /></Field>
               <Field label="Nome do projeto"><input required className={inputClass} value={form.nome} onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))} placeholder="Nome do projeto" /></Field>
               <Field label="Prazo"><input className={inputClass} type="date" value={form.prazo} onChange={(event) => setForm((current) => ({ ...current, prazo: event.target.value }))} /></Field>
               <Field label="Responsavel"><input className={inputClass} value={form.responsavel} onChange={(event) => setForm((current) => ({ ...current, responsavel: event.target.value }))} placeholder="Responsavel" /></Field>
               <Field label="Etapa"><select className={inputClass} value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}>{stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.title}</option>)}</select></Field>
               <Field label="Prioridade"><select className={inputClass} value={form.prioridade} onChange={(event) => setForm((current) => ({ ...current, prioridade: event.target.value as ProjectPriority }))}><option value="baixa">baixa</option><option value="media">media</option><option value="alta">alta</option><option value="urgente">urgente</option></select></Field>
+              <div className="lg:col-span-2 flex flex-wrap gap-2">
+                <Pill tone="emerald">Baixa</Pill>
+                <Pill tone="amber">Media</Pill>
+                <Pill tone="orange">Alta</Pill>
+                <Pill tone="rose">Urgente</Pill>
+              </div>
               <div className="lg:col-span-2">
                 <Field label="Descricao">
                   <textarea className={textareaClass} value={form.descricao} onChange={(event) => setForm((current) => ({ ...current, descricao: event.target.value }))} placeholder="Escopo e detalhes do projeto" />
@@ -549,7 +575,7 @@ export function ProjetosView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               </div>
             </div>
 
-            <DialogFooter className="border-slate-200 bg-slate-50">
+            <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-5">
               <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </button>

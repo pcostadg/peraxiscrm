@@ -1,15 +1,14 @@
 import Image from "next/image"
-import { Lock, Moon, Settings, Shield } from "lucide-react"
-import { companySettings } from "@/modules/shared/data"
-import { Field, inputClass, ModuleHeader, PanelCard, Pill } from "@/modules/shared/components"
+import { Lock, Settings } from "lucide-react"
+import { Field, inputClass, ModuleHeader, PanelCard } from "@/modules/shared/components"
 import type { SessionUser } from "@/types/crm"
 
 export function ConfiguracoesView({ user }: { user: SessionUser }) {
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={Settings} title="Configuracoes" description="Senha, tema, empresa, dominio, logo e seguranca." />
+      <ModuleHeader icon={Settings} title="Configuracoes" description="Senha, logo e preferencias do ambiente." />
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <PanelCard>
           <div className="flex items-center gap-3"><Lock className="text-blue-600" /><h3 className="font-bold">Senhas</h3></div>
           <div className="mt-5 space-y-4">
@@ -20,34 +19,15 @@ export function ConfiguracoesView({ user }: { user: SessionUser }) {
         </PanelCard>
 
         <PanelCard>
-          <div className="flex items-center gap-3"><Moon className="text-blue-600" /><h3 className="font-bold">Aparencia</h3></div>
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            <button className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-700">Claro</button>
-            <button className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm font-semibold text-white">Escuro</button>
-          </div>
-          <p className="mt-4 text-sm text-slate-500">Theme provider ja preparado para alternancia futura.</p>
-        </PanelCard>
-
-        <PanelCard>
-          <div className="flex items-center gap-3"><Shield className="text-blue-600" /><h3 className="font-bold">Seguranca</h3></div>
-          <div className="mt-5 space-y-3">
-            <Pill tone="emerald">Cookies HTTP-only</Pill>
-            <Pill tone="blue">Tokens apenas backend</Pill>
-            <Pill tone="violet">Vercel Free ready</Pill>
+          <div className="flex items-center gap-3"><Image src="/logo.png" alt="Peraxis" width={36} height={36} className="rounded-xl bg-white p-1" /><h3 className="font-bold">Identidade visual</h3></div>
+          <div className="mt-5 rounded-3xl border border-slate-200 bg-[linear-gradient(135deg,#f8fbff_0%,#eef4ff_100%)] p-5">
+            <p className="text-sm text-slate-500">O seletor de tema agora fica na topbar geral do sistema. Aqui mantemos apenas ajustes de acesso e identidade.</p>
+            <div className="mt-5 flex justify-center rounded-2xl border border-white/80 bg-white/80 p-5 shadow-sm">
+              <Image src="/logo.png" alt="Peraxis" width={180} height={64} className="h-auto w-[180px]" />
+            </div>
           </div>
         </PanelCard>
       </div>
-
-      <PanelCard>
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-          <Image src="/logo.png" alt="Peraxis" width={180} height={64} className="h-auto w-[180px] rounded-xl bg-white p-2" />
-          <div className="grid flex-1 gap-4 lg:grid-cols-3">
-            <Field label="Nome da empresa"><input className={inputClass} defaultValue={companySettings.nome} /></Field>
-            <Field label="Dominio"><input className={inputClass} defaultValue={companySettings.dominio} /></Field>
-            <Field label="Dados basicos"><input className={inputClass} defaultValue={companySettings.dados} /></Field>
-          </div>
-        </div>
-      </PanelCard>
     </div>
   )
 }

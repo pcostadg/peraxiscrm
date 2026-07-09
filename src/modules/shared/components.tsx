@@ -9,7 +9,7 @@ export function ModuleHeader({
 }: {
   icon: LucideIcon
   title: string
-  description: string
+  description?: string
   action?: React.ReactNode
 }) {
   return (
@@ -20,7 +20,7 @@ export function ModuleHeader({
         </div>
         <div>
           <h2 className="text-2xl font-bold text-slate-950 sm:text-3xl">{title}</h2>
-          <p className="mt-1 max-w-3xl text-sm text-slate-500 lg:text-base">{description}</p>
+          {description?.trim() ? <p className="mt-1 max-w-3xl text-sm text-slate-500 lg:text-base">{description}</p> : null}
         </div>
       </div>
       {action}
@@ -48,12 +48,13 @@ export function Pill({
   tone = "slate",
 }: {
   children: React.ReactNode
-  tone?: "blue" | "emerald" | "amber" | "rose" | "violet" | "slate"
+  tone?: "blue" | "emerald" | "amber" | "orange" | "rose" | "violet" | "slate"
 }) {
   const tones = {
     blue: "bg-blue-50 text-blue-700",
     emerald: "bg-emerald-50 text-emerald-700",
     amber: "bg-amber-50 text-amber-700",
+    orange: "bg-orange-50 text-orange-700",
     rose: "bg-rose-50 text-rose-700",
     violet: "bg-violet-50 text-violet-700",
     slate: "bg-slate-100 text-slate-700",
