@@ -104,16 +104,7 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
             ? "documento"
             : "texto"
 
-  const message =
-    String(
-      payload.text ??
-        payload.message ??
-        (typeof payload.body === "string" ? payload.body : "") ??
-        (payload.text as { message?: string } | undefined)?.message ??
-        "",
-    ) ||
-    String((payload.text as { message?: string } | undefined)?.message ?? "") ||
-    (kind === "audio" ? "Audio recebido." : "Mensagem recebida.")
+  const message = extractMessageText(payload, kind)
 
   return {
     phone,
@@ -121,7 +112,54 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
     kind,
     message,
     messageId: String(payload.messageId ?? payload.id ?? `${phone}-${Date.now()}`),
-    direction: String(payload.fromMe ?? payload.isSentByMe ? "saida" : "entrada") as "entrada" | "saida",
+    direction: (payload.fromMe === true || payload.isSentByMe === true ? "saida" : "entrada") as "entrada" | "saida",
     raw: payload,
   }
+}
+
+function extractMessageText(payload: Record<string, unknown>, kind: string) {
+  const candidates: unknown[] = [
+    payload.text,
+    payload.message,
+    payload.body,
+    payload.caption,
+    payload.content,
+    payload.msg,
+    (payload.text as { message?: unknown } | undefined)?.message,
+    (payload.message as { text?: unknown; caption?: unknown; body?: unknown } | undefined)?.text,
+    (payload.message as { text?: unknown; caption?: unknown; body?: unknown } | undefined)?.caption,
+    (payload.message as { text?: unknown; caption?: unknown; body?: unknown } | undefined)?.body,
+  ]
+
+  for (const candidate of candidates) {
+    const normalized = normalizeTextCandidate(candidate)
+    if (normalized) return normalized
+  }
+
+  return kind === "audio" ? "Audio recebido." : "Mensagem recebida."
+}
+
+function normalizeTextCandidate(value: unknown): string {
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    return trimmed || ""
+  }
+
+  if (!value || typeof value !== "object") return ""
+
+  const objectValue = value as Record<string, unknown>
+  const nestedCandidates = [
+    objectValue.message,
+    objectValue.text,
+    objectValue.body,
+    objectValue.caption,
+    objectValue.content,
+  ]
+
+  for (const candidate of nestedCandidates) {
+    const normalized = normalizeTextCandidate(candidate)
+    if (normalized) return normalized
+  }
+
+  return ""
 }

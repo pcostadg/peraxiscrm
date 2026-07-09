@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { AudioLines, File, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Video } from "lucide-react"
 import { agents, chatMessages, conversations } from "@/modules/shared/data"
 import { ModuleHeader, Pill, inputClass, textareaClass } from "@/modules/shared/components"
@@ -80,6 +80,37 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [draft, setDraft] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newConversation, setNewConversation] = useState<ConversationFormState>(emptyConversationForm)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function refreshConversations() {
+      try {
+        const response = await fetch("/api/conversas", { cache: "no-store" })
+        const result = await response.json()
+        if (!response.ok || !result?.data || cancelled) return
+
+        const records = Array.isArray(result.data) ? (result.data as CrmRecord[]) : []
+        const nextConversations = records.map(conversationFromRecord)
+        const nextMessages = records.flatMap(messagesFromRecord)
+
+        setConversationItems(nextConversations)
+        setMessageItems(nextMessages)
+        setActiveId((current) => {
+          if (current && nextConversations.some((item) => item.id === current)) return current
+          return nextConversations[0]?.id ?? ""
+        })
+      } catch {
+        // Silent retry on next tick.
+      }
+    }
+
+    void refreshConversations()
+
+    return () => {
+      cancelled = true
+    }
+  }, [realtime.tick])
 
   const filtered = useMemo(
     () =>
