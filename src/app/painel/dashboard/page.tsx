@@ -1,5 +1,5 @@
 import { DashboardView } from "@/modules/dashboard/dashboard-view"
-import { listCrmRecords, type CrmRecord } from "@/services/crm-repository"
+import { listAppUsers, listCrmRecords, type CrmRecord } from "@/services/crm-repository"
 
 function isProjectRecord(record: CrmRecord) {
   const recordType = record.data?.recordType
@@ -11,17 +11,22 @@ function isLeadBoardConfigRecord(record: CrmRecord) {
 }
 
 export default async function DashboardPage() {
-  const [leads, conversas, disparos, projetos, financeiro] = await Promise.all([
+  const [leads, conversas, disparos, projetos, financeiro, usuarios] = await Promise.all([
     listCrmRecords("leads"),
     listCrmRecords("conversas"),
     listCrmRecords("disparos"),
     listCrmRecords("projetos"),
     listCrmRecords("financeiro"),
+    listAppUsers(),
   ])
 
   const leadRecords = Array.isArray(leads) ? (leads as CrmRecord[]).filter((record) => !isLeadBoardConfigRecord(record)) : []
   const projectRecords = Array.isArray(projetos) ? (projetos as CrmRecord[]).filter(isProjectRecord) : []
   const financeRecords = Array.isArray(financeiro) ? (financeiro as CrmRecord[]) : []
+
+  const activeUsersCount = Array.isArray(usuarios)
+    ? usuarios.filter((user) => "status" in user && user.status === "ativo").length
+    : 0
 
   return <DashboardView dbCounts={{
     leads: leadRecords.length,
@@ -29,5 +34,6 @@ export default async function DashboardPage() {
     disparos: Array.isArray(disparos) ? disparos.length : 0,
     projetos: projectRecords.length,
     financeiro: financeRecords.length,
+    usuarios: activeUsersCount,
   }} financeRecords={financeRecords} leadRecords={leadRecords} projectRecords={projectRecords} />
 }

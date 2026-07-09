@@ -19,6 +19,7 @@ export const dashboardMetrics: DashboardMetric[] = [
   { id: "conversas", title: "Conversas", value: "0", hint: "Atendimentos totais", trend: "0 abertas", tone: "violet", series: [0, 0, 0, 0, 0, 0, 0] },
   { id: "ativos", title: "Projetos ativos", value: "0", hint: "Operacao em andamento", trend: "0 em andamento", tone: "slate", series: [0, 0, 0, 0, 0, 0, 0] },
   { id: "pendentes", title: "Projetos pendentes", value: "0", hint: "Aguardando inicio ou aprovacao", trend: "0 pendentes", tone: "rose", series: [0, 0, 0, 0, 0, 0, 0] },
+  { id: "usuarios", title: "Usuarios ativos", value: "0", hint: "Equipe com acesso liberado", trend: "0 ativos", tone: "amber", series: [0, 0, 0, 0, 0, 0, 0] },
 ]
 
 export const dashboardChartSeries = [

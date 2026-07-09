@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, CircleDollarSign, Clock3, FolderKanban, MessageCircle, TrendingUp, Users } from "lucide-react"
+import { BarChart3, CircleDollarSign, Clock3, FolderKanban, MessageCircle, TrendingUp, Users, UserRoundCheck } from "lucide-react"
 import { dashboardChartSeries, dashboardMetrics, dispatchReports, financeEntries, leads, projects } from "@/modules/shared/data"
 import { ModuleHeader, PanelCard, Pill } from "@/modules/shared/components"
 import { cn } from "@/lib/utils"
@@ -15,6 +15,7 @@ const icons = {
   conversas: MessageCircle,
   ativos: FolderKanban,
   pendentes: Clock3,
+  usuarios: UserRoundCheck,
 }
 
 const toneClasses = {
@@ -48,7 +49,7 @@ export function DashboardView({
   leadRecords = [],
   projectRecords = [],
 }: {
-  dbCounts?: { leads: number; conversas: number; disparos: number; projetos: number; financeiro: number }
+  dbCounts?: { leads: number; conversas: number; disparos: number; projetos: number; financeiro: number; usuarios: number }
   financeRecords?: CrmRecord[]
   leadRecords?: CrmRecord[]
   projectRecords?: CrmRecord[]
@@ -84,6 +85,7 @@ export function DashboardView({
     if (metric.id === "conversas") return { ...metric, value: String(dbCounts.conversas) }
     if (metric.id === "ativos") return { ...metric, value: String(activeProjectsCount), trend: `${activeProjectsCount} em andamento` }
     if (metric.id === "pendentes") return { ...metric, value: String(pendingProjectsCount), trend: `${pendingProjectsCount} pendentes` }
+    if (metric.id === "usuarios") return { ...metric, value: String(dbCounts.usuarios), trend: `${dbCounts.usuarios} ativos` }
     return metric
   }).filter((metric) => metric.id !== "disparos")
   const activeMetric = metrics.find((metric) => metric.id === activeId) ?? metrics[0]
