@@ -33,12 +33,12 @@ export function Topbar({ user }: { user: SessionUser }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <label className="hidden items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 sm:flex">
+        <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-medium text-slate-600 sm:px-3">
           {resolvedTheme === "dark" ? <MoonStar size={16} /> : <Sun size={16} />}
           <select
             value={resolvedTheme === "dark" ? "dark" : "light"}
             onChange={(event) => setTheme(event.target.value)}
-            className="bg-transparent outline-none"
+            className="max-w-20 bg-transparent text-sm outline-none sm:max-w-none"
             aria-label="Tema"
           >
             <option value="light">Claro</option>
