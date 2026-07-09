@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
   if (parsed.event === "presence") {
     await upsertCrmRecordById("conversas", conversationId, {
-      contactName: parsed.contactName || String(previousData?.contactName ?? parsed.phone),
+      contactName: String(previousData?.contactName ?? parsed.contactName ?? parsed.phone),
       phone: parsed.phone,
       source: String(previousData?.source ?? "manual"),
       unread: Number(previousData?.unread ?? 0),
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
   }
 
   await upsertCrmRecordById("conversas", conversationId, {
-    contactName: parsed.contactName || String(previousData?.contactName ?? parsed.phone),
+    contactName: String(previousData?.contactName ?? parsed.contactName ?? parsed.phone),
     phone: parsed.phone,
     source: String(previousData?.source ?? "manual"),
     unread: parsed.direction === "entrada" ? Number(previousData?.unread ?? 0) + 1 : Number(previousData?.unread ?? 0),

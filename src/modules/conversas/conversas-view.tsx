@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { File, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Video } from "lucide-react"
+import { File, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Tag, Video, X } from "lucide-react"
 import { chatMessages, conversations } from "@/modules/shared/data"
-import { ModuleHeader, Pill, inputClass, textareaClass } from "@/modules/shared/components"
+import { ModuleHeader, Pill, buttonClass, inputClass, textareaClass } from "@/modules/shared/components"
 import { useRealtimeSync } from "@/services/use-realtime-sync"
 import type { CrmRecord } from "@/services/crm-repository"
 import type { ChatMessage, Conversation } from "@/types/crm"
@@ -89,6 +89,9 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newConversation, setNewConversation] = useState<ConversationFormState>(emptyConversationForm)
   const [sending, setSending] = useState(false)
+  const [tagDialogOpen, setTagDialogOpen] = useState(false)
+  const [newTag, setNewTag] = useState("")
+  const [savingTags, setSavingTags] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -139,6 +142,10 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const active = conversationItems.find((item) => item.id === activeId) ?? conversationItems[0]
   const messages = messageItems.filter((message) => message.conversationId === active?.id)
   const activePresenceLabel = getPresenceLabel(active?.presenceStatus)
+  const availableTags = useMemo(
+    () => Array.from(new Set(conversationItems.flatMap((item) => item.tags.map((tag) => tag.trim()).filter(Boolean)))).sort(),
+    [conversationItems],
+  )
 
   async function handleStartConversation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -243,6 +250,70 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     submitCurrentMessage()
   }
 
+  async function saveConversationTags(tags: string[]) {
+    if (!active) return
+    setSavingTags(true)
+    const cleanTags = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)))
+    try {
+      const response = await fetch("/api/conversas", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: active.id,
+          title: active.contactName,
+          contactName: active.contactName,
+          phone: active.phone,
+          source: active.source,
+          assignedTo: active.assignedTo,
+          tags: cleanTags,
+          lastMessage: active.lastMessage,
+          updatedAt: active.updatedAt,
+          unread: active.unread,
+          presenceStatus: active.presenceStatus,
+          messages: messageItems
+            .filter((message) => message.conversationId === active.id)
+            .map((message) => ({
+              id: message.id,
+              direction: message.direction,
+              kind: message.kind,
+              content: message.content,
+              status: message.status,
+              time: message.time,
+            })),
+          status: "aberta",
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Nao foi possivel salvar as etiquetas.")
+
+      setConversationItems((current) =>
+        current.map((item) => (item.id === active.id ? { ...item, tags: cleanTags } : item)),
+      )
+      toast.success("Etiquetas salvas.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao salvar etiquetas.")
+    } finally {
+      setSavingTags(false)
+    }
+  }
+
+  async function handleCreateTag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const tag = newTag.trim()
+    if (!tag || !active) return
+    await saveConversationTags([...(active.tags ?? []), tag])
+    setNewTag("")
+  }
+
+  async function toggleTag(tag: string) {
+    if (!active) return
+    const normalized = tag.trim()
+    const nextTags = active.tags.includes(normalized)
+      ? active.tags.filter((item) => item !== normalized)
+      : [...active.tags, normalized]
+    await saveConversationTags(nextTags)
+  }
+
   return (
     <div className="space-y-6">
       <ModuleHeader
@@ -329,8 +400,23 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 {active ? `${active.phone || "Sem telefone"} · ${active.assignedTo} · origem ${active.source}` : "Inicie uma conversa manual para começar."}
               </p>
               {activePresenceLabel && <p className="mt-1 text-xs font-semibold text-emerald-600">{activePresenceLabel}</p>}
+              {active?.tags?.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {active.tags.map((tag) => (
+                    <Pill key={tag} tone={tag === "manual" ? "blue" : "emerald"}>
+                      {tag}
+                    </Pill>
+                  ))}
+                </div>
+              ) : null}
             </div>
-            <Pill tone="blue">Z-API via backend</Pill>
+            <div className="flex items-center gap-2">
+              <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700" onClick={() => setTagDialogOpen(true)}>
+                <Tag size={16} />
+                Etiquetas
+              </button>
+              <Pill tone="blue">Z-API via backend</Pill>
+            </div>
           </header>
 
           <div className="flex-1 space-y-3 overflow-y-auto p-5">
@@ -451,6 +537,75 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               </button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={tagDialogOpen} onOpenChange={setTagDialogOpen}>
+        <DialogContent className="max-w-lg bg-white p-0">
+          <DialogHeader className="border-b border-slate-200 px-6 py-5">
+            <DialogTitle>Etiquetas do contato</DialogTitle>
+            <DialogDescription>
+              Selecione etiquetas existentes ou crie novas para organizar esse contato.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 px-6 py-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Etiquetas atuais</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {active?.tags?.length ? (
+                  active.tags.map((tag) => (
+                    <button key={tag} type="button" onClick={() => void toggleTag(tag)} className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
+                      {tag}
+                      <X size={12} />
+                    </button>
+                  ))
+                ) : (
+                  <span className="text-sm text-slate-500">Nenhuma etiqueta aplicada.</span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Etiquetas disponiveis</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {availableTags.length ? (
+                  availableTags.map((tag) => {
+                    const selected = active?.tags.includes(tag)
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => void toggleTag(tag)}
+                        className={`rounded-full px-3 py-2 text-xs font-semibold ${selected ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"}`}
+                      >
+                        {tag}
+                      </button>
+                    )
+                  })
+                ) : (
+                  <span className="text-sm text-slate-500">Ainda nao existem etiquetas cadastradas.</span>
+                )}
+              </div>
+            </div>
+
+            <form className="space-y-3" onSubmit={handleCreateTag}>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nova etiqueta</label>
+              <div className="flex gap-3">
+                <input className={inputClass} value={newTag} onChange={(event) => setNewTag(event.target.value)} placeholder="Ex.: VIP, Suporte, Prioridade" />
+                <button type="submit" className={buttonClass} disabled={savingTags || !newTag.trim()}>
+                  <Plus size={16} />
+                  Criar
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <DialogFooter className="border-slate-200 bg-slate-50">
+            <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setTagDialogOpen(false)}>
+              Fechar
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

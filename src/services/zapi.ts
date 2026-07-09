@@ -140,13 +140,8 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
       .replace(/@.+$/, "")
       .replace(/\D/g, "")
 
-  const contactName = String(
-    payload.senderName ??
-      payload.pushName ??
-      payload.notifyName ??
-      payload.name ??
-      payload.contactName ??
-      "Contato Z-API",
+  const contactName = normalizeTextCandidate(
+    payload.senderName ?? payload.pushName ?? payload.notifyName ?? payload.name ?? payload.contactName,
   )
 
   const rawPresenceStatus = String(payload.status ?? "").toUpperCase()
