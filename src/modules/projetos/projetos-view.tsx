@@ -14,6 +14,11 @@ type ProjectStage = {
   title: string
 }
 
+type ProjectBoardConfig = {
+  id: string | null
+  stages: ProjectStage[]
+}
+
 type ProjectRecord = ProjectCard & {
   status: string
 }
@@ -70,8 +75,32 @@ function projectFromRecord(record: CrmRecord): ProjectRecord {
   }
 }
 
-function buildStages(items: ProjectRecord[]) {
-  const base = [...projectColumns]
+function isProjectBoardConfigRecord(record: CrmRecord) {
+  return record.data?.recordType === "project_stage_config"
+}
+
+function getProjectBoardConfig(records: CrmRecord[]): ProjectBoardConfig {
+  const configRecord = records.find(isProjectBoardConfigRecord)
+  const storedStages = Array.isArray(configRecord?.data?.stages)
+    ? configRecord.data.stages
+        .map((stage) => {
+          if (!stage || typeof stage !== "object") return null
+          const item = stage as Record<string, unknown>
+          const id = String(item.id ?? "").trim()
+          const title = String(item.title ?? "").trim()
+          return id && title ? { id, title } : null
+        })
+        .filter((stage): stage is ProjectStage => Boolean(stage))
+    : []
+
+  return {
+    id: configRecord?.id ?? null,
+    stages: storedStages,
+  }
+}
+
+function buildStages(items: ProjectRecord[], configuredStages: ProjectStage[] = []) {
+  const base = configuredStages.length ? [...configuredStages] : [...projectColumns]
   for (const item of items) {
     if (!base.some((stage) => stage.id === item.status)) {
       base.push({ id: item.status, title: titleFromStage(item.status) })
@@ -93,15 +122,19 @@ function formFromProject(project: ProjectRecord): ProjectFormState {
 }
 
 export function ProjetosView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
-  const initialProjects = dbRecords.length ? dbRecords.map(projectFromRecord) : projects
+  const projectRecords = dbRecords.filter((record) => !isProjectBoardConfigRecord(record))
+  const boardConfig = getProjectBoardConfig(dbRecords)
+  const initialProjects = projectRecords.length ? projectRecords.map(projectFromRecord) : projects
   const [viewMode, setViewMode] = useState<"lista" | "kanban">("kanban")
   const [projectItems, setProjectItems] = useState<ProjectRecord[]>(initialProjects)
-  const [stages, setStages] = useState<ProjectStage[]>(buildStages(initialProjects))
+  const [stages, setStages] = useState<ProjectStage[]>(buildStages(initialProjects, boardConfig.stages))
+  const [boardConfigId, setBoardConfigId] = useState<string | null>(boardConfig.id)
   const [query, setQuery] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [draggingProjectId, setDraggingProjectId] = useState<string | null>(null)
   const [form, setForm] = useState<ProjectFormState>(emptyProjectForm)
+  const [savingStages, setSavingStages] = useState(false)
 
   const filteredProjects = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -208,11 +241,100 @@ export function ProjetosView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     setStages((current) => current.map((stage) => (stage.id === id ? { ...stage, title } : stage)))
   }
 
-  function handleAddStage() {
+  async function persistStages(nextStages: ProjectStage[]) {
+    setSavingStages(true)
+    try {
+      const payload = {
+        id: boardConfigId ?? undefined,
+        title: "Configuracao do kanban de projetos",
+        recordType: "project_stage_config",
+        stages: nextStages,
+        status: "config",
+      }
+
+      const response = await fetch("/api/projetos", {
+        method: boardConfigId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Nao foi possivel salvar as colunas.")
+
+      const persisted = (result.data ?? result) as CrmRecord
+      if (persisted?.id) setBoardConfigId(persisted.id)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao salvar colunas.")
+      throw error
+    } finally {
+      setSavingStages(false)
+    }
+  }
+
+  async function handleAddStage() {
     const nextNumber = stages.length + 1
     const title = `Nova coluna ${nextNumber}`
     const id = normalizeStageId(title)
-    setStages((current) => [...current, { id, title }])
+    const nextStages = [...stages, { id, title }]
+    setStages(nextStages)
+    try {
+      await persistStages(nextStages)
+      toast.success("Coluna criada.")
+    } catch {}
+  }
+
+  async function handleDeleteStage(stageId: string) {
+    if (stages.length <= 1) {
+      toast.error("Voce precisa manter ao menos uma coluna no kanban.")
+      return
+    }
+
+    const stage = stages.find((item) => item.id === stageId)
+    if (!stage) return
+
+    const targetStage = stages.find((item) => item.id !== stageId)
+    if (!targetStage) return
+
+    const stageProjects = projectItems.filter((item) => item.status === stageId)
+    const previousProjects = projectItems
+    const previousStages = stages
+    const nextStages = stages.filter((item) => item.id !== stageId)
+    const nextProjects = projectItems.map((item) => (item.status === stageId ? { ...item, status: targetStage.id } : item))
+
+    if (
+      !window.confirm(
+        stageProjects.length
+          ? `Excluir a coluna ${stage.title}? Os ${stageProjects.length} projetos dela vao para ${targetStage.title}.`
+          : `Excluir a coluna ${stage.title}?`,
+      )
+    ) {
+      return
+    }
+
+    setStages(nextStages)
+    setProjectItems(nextProjects)
+
+    try {
+      await Promise.all(
+        stageProjects.map(async (project) => {
+          const response = await fetch("/api/projetos", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...project, status: targetStage.id }),
+          })
+          if (!response.ok) {
+            const result = await response.json().catch(() => ({}))
+            throw new Error(result.error || `Nao foi possivel mover o projeto ${project.nome}.`)
+          }
+        }),
+      )
+
+      await persistStages(nextStages)
+      toast.success("Coluna excluida.")
+    } catch (error) {
+      setStages(previousStages)
+      setProjectItems(previousProjects)
+      toast.error(error instanceof Error ? error.message : "Falha ao excluir coluna.")
+    }
   }
 
   function moveProjectToStage(projectId: string, stageId: string) {
@@ -266,7 +388,7 @@ export function ProjetosView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           </div>
 
           {viewMode === "kanban" && (
-            <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={handleAddStage}>
+            <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60" onClick={() => void handleAddStage()} disabled={savingStages}>
               <Plus size={18} />
               Nova coluna
             </button>
@@ -333,10 +455,22 @@ export function ProjetosView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                     <input
                       value={stage.title}
                       onChange={(event) => handleStageRename(stage.id, event.target.value)}
+                      onBlur={() => void persistStages(stages)}
                       className="w-full bg-transparent text-sm font-bold text-slate-900 outline-none"
                     />
                   </div>
-                  <Pill tone="slate">{stage.items.length}</Pill>
+                  <div className="flex items-center gap-2">
+                    <Pill tone="slate">{stage.items.length}</Pill>
+                    <button
+                      type="button"
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => void handleDeleteStage(stage.id)}
+                      disabled={savingStages}
+                      aria-label={`Excluir coluna ${stage.title}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-4 flex-1 space-y-3 rounded-2xl bg-slate-50/80 p-2">
