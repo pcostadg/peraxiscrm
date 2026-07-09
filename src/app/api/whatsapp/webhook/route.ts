@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, ignored: true })
   }
 
-  if (parsed.event === "message" && !parsed.message.trim()) {
+  if (parsed.event === "message" && !parsed.message.trim() && !parsed.mediaUrl) {
     return NextResponse.json({ received: true, ignored: true, reason: "empty-message" })
   }
 
@@ -77,12 +77,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, event: "presence" })
   }
 
+  const messagePreview = getMessagePreview(parsed)
+
   const previousMessages = Array.isArray(previousData?.messages) ? previousData.messages : []
   const nextMessage = {
     id: parsed.messageId,
     direction: parsed.direction,
     kind: parsed.kind,
-    content: parsed.message,
+    content: messagePreview,
+    mediaUrl: parsed.mediaUrl,
+    mimeType: parsed.mimeType,
+    fileName: parsed.fileName,
     status: parsed.direction === "saida" ? "enviado" : "entregue",
     time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
   }
@@ -94,7 +99,7 @@ export async function POST(request: Request) {
     unread: parsed.direction === "entrada" ? Number(previousData?.unread ?? 0) + 1 : Number(previousData?.unread ?? 0),
     assignedTo: String(previousData?.assignedTo ?? "Equipe"),
     tags: Array.isArray(previousData?.tags) ? previousData.tags : ["z-api"],
-    lastMessage: parsed.message,
+    lastMessage: messagePreview,
     updatedAt: "agora",
     messages: [...previousMessages, nextMessage],
     presenceStatus: parsed.direction === "entrada" ? "paused" : previousData?.presenceStatus,
@@ -103,4 +108,22 @@ export async function POST(request: Request) {
   })
 
   return NextResponse.json({ received: true })
+}
+
+function getMessagePreview(parsed: ReturnType<typeof parseZApiWebhookPayload>) {
+  if (parsed.event !== "message") return ""
+  if (parsed.message.trim()) return parsed.message
+
+  switch (parsed.kind) {
+    case "audio":
+      return "Audio"
+    case "imagem":
+      return "Imagem"
+    case "video":
+      return "Video"
+    case "documento":
+      return parsed.fileName?.trim() || "Documento"
+    default:
+      return "Mensagem"
+  }
 }

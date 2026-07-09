@@ -147,6 +147,9 @@ function messagesFromRecord(record: CrmRecord): ChatMessage[] {
       direction: (message.direction as ChatMessage["direction"]) ?? "entrada",
       kind: (message.kind as ChatMessage["kind"]) ?? "texto",
       content: String(message.content ?? ""),
+      mediaUrl: typeof message.mediaUrl === "string" ? message.mediaUrl : undefined,
+      mimeType: typeof message.mimeType === "string" ? message.mimeType : undefined,
+      fileName: typeof message.fileName === "string" ? message.fileName : undefined,
       status: (message.status as ChatMessage["status"]) ?? "entregue",
       time: String(message.time ?? "agora"),
     }
@@ -374,6 +377,9 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               direction: message.direction,
               kind: message.kind,
               content: message.content,
+              mediaUrl: message.mediaUrl,
+              mimeType: message.mimeType,
+              fileName: message.fileName,
               status: message.status,
               time: message.time,
             })),
@@ -442,6 +448,9 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                   direction: message.direction,
                   kind: message.kind,
                   content: message.content,
+                  mediaUrl: message.mediaUrl,
+                  mimeType: message.mimeType,
+                  fileName: message.fileName,
                   status: message.status,
                   time: message.time,
                 })),
@@ -690,14 +699,23 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               messages.map((message) => (
                 <div key={message.id} className={`flex ${message.direction === "saida" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[82%] rounded-3xl px-4 py-3 text-sm shadow-sm sm:max-w-[62%] ${message.direction === "saida" ? "bg-blue-600 text-white" : "border border-slate-200 bg-white text-slate-900"}`}>
-                    <p>
+                    <div>
                       {message.kind !== "texto" && (
                         <strong className={`mr-2 uppercase ${message.direction === "saida" ? "text-blue-100" : "text-blue-600"}`}>
                           {message.kind}
                         </strong>
                       )}
-                      {message.content}
-                    </p>
+                      {message.kind === "audio" && message.mediaUrl ? (
+                        <div className="mt-2">
+                          <audio controls preload="none" className="max-w-full" src={message.mediaUrl}>
+                            Seu navegador nao suporta reproducao de audio.
+                          </audio>
+                          {message.content && message.content !== "Audio" ? <p className="mt-2">{message.content}</p> : null}
+                        </div>
+                      ) : (
+                        <p>{message.content}</p>
+                      )}
+                    </div>
                     <p className={`mt-2 text-right text-[11px] ${message.direction === "saida" ? "text-blue-100" : "text-slate-500"}`}>
                       {message.time} · {message.status}
                     </p>

@@ -66,6 +66,9 @@ export type ChatMessage = {
   direction: MessageDirection
   kind: MessageKind
   content: string
+  mediaUrl?: string
+  mimeType?: string
+  fileName?: string
   status: DispatchStatus
   time: string
 }

@@ -24,6 +24,9 @@ export type ParsedZApiWebhook =
       contactName: string
       kind: "texto" | "imagem" | "audio" | "video" | "documento"
       message: string
+      mediaUrl?: string
+      mimeType?: string
+      fileName?: string
       messageId: string
       direction: "entrada" | "saida"
       raw: Record<string, unknown>
@@ -166,7 +169,8 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
             ? "documento"
             : "texto"
 
-  const message = extractMessageText(payload, kind)
+  const media = extractMediaData(payload, kind)
+  const message = extractMessageText(payload)
 
   return {
     event: "message",
@@ -174,6 +178,9 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
     contactName,
     kind,
     message,
+    mediaUrl: media.mediaUrl,
+    mimeType: media.mimeType,
+    fileName: media.fileName,
     messageId: String(payload.messageId ?? payload.id ?? `${phone}-${Date.now()}`),
     direction: (payload.fromMe === true || payload.isSentByMe === true ? "saida" : "entrada") as "entrada" | "saida",
     raw: payload,
@@ -195,7 +202,7 @@ function mapPresenceStatus(value: string): "available" | "unavailable" | "compos
   }
 }
 
-function extractMessageText(payload: Record<string, unknown>, kind: string) {
+function extractMessageText(payload: Record<string, unknown>) {
   const candidates: unknown[] = [
     payload.text,
     payload.message,
@@ -215,6 +222,39 @@ function extractMessageText(payload: Record<string, unknown>, kind: string) {
   }
 
   return ""
+}
+
+function extractMediaData(payload: Record<string, unknown>, kind: string) {
+  const nestedPayloads = [payload.audio, payload.image, payload.video, payload.document, payload].filter(
+    (value): value is Record<string, unknown> => Boolean(value) && typeof value === "object",
+  )
+
+  const mediaUrl = firstString(
+    nestedPayloads.flatMap((item) => [
+      item.audioUrl,
+      item.imageUrl,
+      item.videoUrl,
+      item.documentUrl,
+      item.url,
+      item.fileUrl,
+      item.mediaUrl,
+    ]),
+  )
+
+  const mimeType = firstString(nestedPayloads.map((item) => item.mimeType))
+  const fileName = firstString(
+    nestedPayloads.flatMap((item) => [item.fileName, item.filename, item.name, kind === "audio" ? "audio.ogg" : ""]),
+  )
+
+  return { mediaUrl, mimeType, fileName }
+}
+
+function firstString(values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+
+  return undefined
 }
 
 function normalizeTextCandidate(value: unknown): string {
