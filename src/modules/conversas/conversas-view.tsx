@@ -1,16 +1,17 @@
 "use client"
 
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import { File, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Tag, Video, X } from "lucide-react"
+import { Eraser, File, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Tag, Trash2, Video, X } from "lucide-react"
 import { chatMessages, conversations } from "@/modules/shared/data"
 import { ModuleHeader, Pill, buttonClass, inputClass, textareaClass } from "@/modules/shared/components"
 import { useRealtimeSync } from "@/services/use-realtime-sync"
 import type { CrmRecord } from "@/services/crm-repository"
-import type { ChatMessage, Conversation } from "@/types/crm"
+import type { ChatMessage, Conversation, ConversationTag, ConversationTagTone } from "@/types/crm"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 
 const filters = ["todas", "nao lidas", "atribuidas", "chatbot", "manual"] as const
+const tagTones: ConversationTagTone[] = ["blue", "emerald", "amber", "rose", "violet", "slate"]
 const attachmentTypes = [
   { label: "Imagem", icon: ImageIcon },
   { label: "Audio", icon: Mic },
@@ -30,9 +31,84 @@ const emptyConversationForm: ConversationFormState = {
   assignedTo: "",
 }
 
+function normalizeTagTone(value: unknown): ConversationTagTone {
+  switch (String(value ?? "").trim()) {
+    case "blue":
+      return "blue"
+    case "emerald":
+      return "emerald"
+    case "amber":
+      return "amber"
+    case "rose":
+      return "rose"
+    case "violet":
+      return "violet"
+    case "slate":
+      return "slate"
+    default:
+      return "emerald"
+  }
+}
+
+function toneClasses(tone: ConversationTagTone, selected = false) {
+  const base =
+    tone === "blue"
+      ? "bg-blue-50 text-blue-700"
+      : tone === "amber"
+        ? "bg-amber-50 text-amber-700"
+        : tone === "rose"
+          ? "bg-rose-50 text-rose-700"
+          : tone === "violet"
+            ? "bg-violet-50 text-violet-700"
+            : tone === "slate"
+              ? "bg-slate-100 text-slate-700"
+              : "bg-emerald-50 text-emerald-700"
+
+  return `${base} ${selected ? "ring-2 ring-slate-300" : ""}`.trim()
+}
+
+function normalizeConversationTags(value: unknown): ConversationTag[] {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((item) => {
+      if (typeof item === "string") {
+        const label = item.trim()
+        return label ? { label, tone: label.toLowerCase() === "manual" ? "blue" : "emerald" } : null
+      }
+
+      if (!item || typeof item !== "object") return null
+
+      const tag = item as Record<string, unknown>
+      const label = String(tag.label ?? tag.name ?? "").trim()
+      return label ? ({ label, tone: normalizeTagTone(tag.tone ?? tag.color) } satisfies ConversationTag) : null
+    })
+    .filter((item): item is ConversationTag => Boolean(item))
+}
+
+function isPlaceholderName(name: string, phone: string) {
+  const normalizedName = name.trim().toLowerCase()
+  const normalizedPhone = phone.replace(/\D/g, "")
+  return !normalizedName || normalizedName === "contato z-api" || normalizedName === normalizedPhone || normalizedName === `+${normalizedPhone}`
+}
+
+function resolveConversationName(data: Record<string, unknown>, record: CrmRecord) {
+  const phone = String(data.phone ?? data.telefone ?? "")
+  const currentName = String(data.contactName ?? data.nome ?? record.title ?? "").trim()
+  if (currentName && !isPlaceholderName(currentName, phone)) return currentName
+
+  if (data.rawLastWebhook && typeof data.rawLastWebhook === "object") {
+    const raw = data.rawLastWebhook as Record<string, unknown>
+    const webhookName = String(raw.senderName ?? raw.pushName ?? raw.notifyName ?? raw.name ?? "").trim()
+    if (webhookName && !isPlaceholderName(webhookName, phone)) return webhookName
+  }
+
+  return currentName || phone || "Contato"
+}
+
 function conversationFromRecord(record: CrmRecord): Conversation {
   const data = record.data
-  const name = String(data.contactName ?? data.nome ?? record.title)
+  const name = resolveConversationName(data, record)
   return {
     id: record.id,
     contactName: name,
@@ -46,7 +122,7 @@ function conversationFromRecord(record: CrmRecord): Conversation {
     source: (data.source as Conversation["source"]) ?? "manual",
     unread: Number(data.unread ?? 0),
     assignedTo: String(data.assignedTo ?? "Equipe"),
-    tags: Array.isArray(data.tags) ? data.tags.map(String) : ["z-api"],
+    tags: normalizeConversationTags(data.tags),
     lastMessage: String(data.lastMessage ?? data.message ?? "Conversa iniciada."),
     updatedAt: String(data.updatedAt ?? "agora"),
     presenceStatus:
@@ -91,7 +167,11 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [sending, setSending] = useState(false)
   const [tagDialogOpen, setTagDialogOpen] = useState(false)
   const [newTag, setNewTag] = useState("")
+  const [newTagTone, setNewTagTone] = useState<ConversationTagTone>("emerald")
   const [savingTags, setSavingTags] = useState(false)
+  const [cleaningMessages, setCleaningMessages] = useState(false)
+  const [deletingConversation, setDeletingConversation] = useState(false)
+  const [activeTagFilter, setActiveTagFilter] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -131,19 +211,27 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const filtered = useMemo(
     () =>
       conversationItems.filter((item) => {
+        if (activeTagFilter && !item.tags.some((tag) => tag.label === activeTagFilter)) return false
         if (filter === "todas") return true
         if (filter === "nao lidas") return item.unread > 0
         if (filter === "atribuidas") return Boolean(item.assignedTo)
         return item.source === filter
       }),
-    [conversationItems, filter],
+    [activeTagFilter, conversationItems, filter],
   )
 
   const active = conversationItems.find((item) => item.id === activeId) ?? conversationItems[0]
   const messages = messageItems.filter((message) => message.conversationId === active?.id)
   const activePresenceLabel = getPresenceLabel(active?.presenceStatus)
   const availableTags = useMemo(
-    () => Array.from(new Set(conversationItems.flatMap((item) => item.tags.map((tag) => tag.trim()).filter(Boolean)))).sort(),
+    () =>
+      Array.from(
+        new Map(
+          conversationItems
+            .flatMap((item) => item.tags)
+            .map((tag) => [tag.label.toLowerCase(), tag] as const),
+        ).values(),
+      ).sort((a, b) => a.label.localeCompare(b.label)),
     [conversationItems],
   )
 
@@ -165,7 +253,10 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       source: "manual",
       unread: 0,
       assignedTo: newConversation.assignedTo.trim() || "Equipe",
-      tags: ["z-api", "manual"],
+      tags: [
+        { label: "z-api", tone: "emerald" },
+        { label: "manual", tone: "blue" },
+      ],
       lastMessage: "Conversa iniciada manualmente.",
       updatedAt: "agora",
     }
@@ -250,10 +341,17 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     submitCurrentMessage()
   }
 
-  async function saveConversationTags(tags: string[]) {
+  async function saveConversationTags(tags: ConversationTag[]) {
     if (!active) return
     setSavingTags(true)
-    const cleanTags = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)))
+    const cleanTags = Array.from(
+      new Map(
+        tags
+          .map((tag) => ({ label: tag.label.trim(), tone: normalizeTagTone(tag.tone) }))
+          .filter((tag) => tag.label)
+          .map((tag) => [tag.label.toLowerCase(), tag] as const),
+      ).values(),
+    )
     try {
       const response = await fetch("/api/conversas", {
         method: "PUT",
@@ -301,17 +399,144 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     event.preventDefault()
     const tag = newTag.trim()
     if (!tag || !active) return
-    await saveConversationTags([...(active.tags ?? []), tag])
+    await saveConversationTags([...(active.tags ?? []), { label: tag, tone: newTagTone }])
     setNewTag("")
+    setNewTagTone("emerald")
   }
 
-  async function toggleTag(tag: string) {
+  async function toggleTag(tag: ConversationTag) {
     if (!active) return
-    const normalized = tag.trim()
-    const nextTags = active.tags.includes(normalized)
-      ? active.tags.filter((item) => item !== normalized)
-      : [...active.tags, normalized]
+    const nextTags = active.tags.some((item) => item.label === tag.label)
+      ? active.tags.filter((item) => item.label !== tag.label)
+      : [...active.tags, tag]
     await saveConversationTags(nextTags)
+  }
+
+  async function deleteTagEverywhere(tag: ConversationTag) {
+    if (savingTags) return
+    if (!window.confirm(`Deseja excluir a etiqueta ${tag.label} de todos os contatos?`)) return
+
+    setSavingTags(true)
+    try {
+      const targets = conversationItems.filter((item) => item.tags.some((itemTag) => itemTag.label === tag.label))
+      await Promise.all(
+        targets.map(async (item) => {
+          const response = await fetch("/api/conversas", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: item.id,
+              title: item.contactName,
+              contactName: item.contactName,
+              phone: item.phone,
+              source: item.source,
+              assignedTo: item.assignedTo,
+              tags: item.tags.filter((itemTag) => itemTag.label !== tag.label),
+              lastMessage: item.lastMessage,
+              updatedAt: item.updatedAt,
+              unread: item.unread,
+              presenceStatus: item.presenceStatus,
+              messages: messageItems
+                .filter((message) => message.conversationId === item.id)
+                .map((message) => ({
+                  id: message.id,
+                  direction: message.direction,
+                  kind: message.kind,
+                  content: message.content,
+                  status: message.status,
+                  time: message.time,
+                })),
+              status: "aberta",
+            }),
+          })
+          if (!response.ok) {
+            const result = await response.json().catch(() => null)
+            throw new Error(result?.error || `Nao foi possivel excluir a etiqueta ${tag.label}.`)
+          }
+        }),
+      )
+
+      setConversationItems((current) =>
+        current.map((item) => ({ ...item, tags: item.tags.filter((itemTag) => itemTag.label !== tag.label) })),
+      )
+      if (activeTagFilter === tag.label) setActiveTagFilter("")
+      toast.success("Etiqueta excluida dos contatos.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao excluir etiqueta.")
+    } finally {
+      setSavingTags(false)
+    }
+  }
+
+  async function handleClearConversationMessages() {
+    if (!active || cleaningMessages) return
+    if (!window.confirm(`Deseja limpar todas as mensagens de ${active.contactName}?`)) return
+
+    setCleaningMessages(true)
+    try {
+      const response = await fetch("/api/conversas", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: active.id,
+          title: active.contactName,
+          contactName: active.contactName,
+          phone: active.phone,
+          source: active.source,
+          assignedTo: active.assignedTo,
+          tags: active.tags,
+          lastMessage: "Historico limpo.",
+          updatedAt: "agora",
+          unread: 0,
+          presenceStatus: active.presenceStatus,
+          messages: [],
+          status: "aberta",
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Nao foi possivel limpar a conversa.")
+
+      setMessageItems((current) => current.filter((message) => message.conversationId !== active.id))
+      setConversationItems((current) =>
+        current.map((item) =>
+          item.id === active.id
+            ? { ...item, lastMessage: "Historico limpo.", updatedAt: "agora", unread: 0 }
+            : item,
+        ),
+      )
+      toast.success("Mensagens da conversa removidas.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao limpar mensagens.")
+    } finally {
+      setCleaningMessages(false)
+    }
+  }
+
+  async function handleDeleteConversation() {
+    if (!active || deletingConversation) return
+    if (!window.confirm(`Deseja excluir a conversa de ${active.contactName}?`)) return
+
+    setDeletingConversation(true)
+    try {
+      const response = await fetch("/api/conversas", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: active.id }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Nao foi possivel excluir a conversa.")
+
+      const remaining = conversationItems.filter((item) => item.id !== active.id)
+      setConversationItems(remaining)
+      setMessageItems((current) => current.filter((message) => message.conversationId !== active.id))
+      setActiveId(remaining[0]?.id ?? "")
+      setTagDialogOpen(false)
+      toast.success("Conversa excluida.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao excluir conversa.")
+    } finally {
+      setDeletingConversation(false)
+    }
   }
 
   return (
@@ -339,11 +564,36 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 <button
                   key={item}
                   type="button"
-                  onClick={() => setFilter(item)}
+                  onClick={() => {
+                    setFilter(item)
+                    setActiveTagFilter("")
+                  }}
                   className={`rounded-full px-3 py-2 text-xs font-semibold capitalize ${filter === item ? "bg-blue-600 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200"}`}
                 >
                   {item}
                 </button>
+              ))}
+              {availableTags.map((tag) => (
+                <span key={tag.label} className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTagFilter((current) => (current === tag.label ? "" : tag.label))
+                      setFilter("todas")
+                    }}
+                    className={`rounded-full px-3 py-2 text-xs font-semibold ${activeTagFilter === tag.label ? "bg-slate-900 text-white" : toneClasses(tag.tone)}`}
+                  >
+                    {tag.label}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteTagEverywhere(tag)}
+                    className="inline-flex size-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500"
+                    aria-label={`Excluir etiqueta ${tag.label}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
               ))}
             </div>
           </div>
@@ -372,8 +622,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                     )}
                     <span className="mt-2 flex flex-wrap gap-1">
                       {item.tags.map((tag) => (
-                        <Pill key={tag} tone={tag === "manual" ? "blue" : "emerald"}>
-                          {tag}
+                        <Pill key={tag.label} tone={tag.tone}>
+                          {tag.label}
                         </Pill>
                       ))}
                     </span>
@@ -392,7 +642,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           </div>
         </aside>
 
-        <section className="flex min-h-[720px] flex-col bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)]">
+        <section className="flex min-h-[720px] flex-col overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)]">
           <header className="flex items-center justify-between border-b border-slate-200 bg-white/80 p-4 backdrop-blur">
             <div>
               <h3 className="font-bold text-slate-900">{active?.contactName || "Nenhuma conversa selecionada"}</h3>
@@ -403,23 +653,40 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               {active?.tags?.length ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {active.tags.map((tag) => (
-                    <Pill key={tag} tone={tag === "manual" ? "blue" : "emerald"}>
-                      {tag}
+                    <Pill key={tag.label} tone={tag.tone}>
+                      {tag.label}
                     </Pill>
                   ))}
                 </div>
               ) : null}
             </div>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void handleClearConversationMessages()}
+                disabled={!active || cleaningMessages}
+              >
+                <Eraser size={16} />
+                Limpar mensagens
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void handleDeleteConversation()}
+                disabled={!active || deletingConversation}
+              >
+                <Trash2 size={16} />
+                Excluir conversa
+              </button>
               <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700" onClick={() => setTagDialogOpen(true)}>
                 <Tag size={16} />
                 Etiquetas
               </button>
-              <Pill tone="blue">Z-API via backend</Pill>
             </div>
           </header>
 
-          <div className="flex-1 space-y-3 overflow-y-auto p-5">
+          <div className="flex-1 space-y-3 overflow-y-auto p-5 [scrollbar-color:rgb(203_213_225)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
             {messages.length ? (
               messages.map((message) => (
                 <div key={message.id} className={`flex ${message.direction === "saida" ? "justify-end" : "justify-start"}`}>
@@ -555,8 +822,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               <div className="mt-3 flex flex-wrap gap-2">
                 {active?.tags?.length ? (
                   active.tags.map((tag) => (
-                    <button key={tag} type="button" onClick={() => void toggleTag(tag)} className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
-                      {tag}
+                    <button key={tag.label} type="button" onClick={() => void toggleTag(tag)} className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${toneClasses(tag.tone)}`}>
+                      {tag.label}
                       <X size={12} />
                     </button>
                   ))
@@ -571,15 +838,15 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               <div className="mt-3 flex flex-wrap gap-2">
                 {availableTags.length ? (
                   availableTags.map((tag) => {
-                    const selected = active?.tags.includes(tag)
+                    const selected = active?.tags.some((item) => item.label === tag.label)
                     return (
                       <button
-                        key={tag}
+                        key={tag.label}
                         type="button"
                         onClick={() => void toggleTag(tag)}
-                        className={`rounded-full px-3 py-2 text-xs font-semibold ${selected ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"}`}
+                        className={`rounded-full px-3 py-2 text-xs font-semibold ${selected ? "bg-blue-600 text-white" : toneClasses(tag.tone)}`}
                       >
-                        {tag}
+                        {tag.label}
                       </button>
                     )
                   })
@@ -597,6 +864,18 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                   <Plus size={16} />
                   Criar
                 </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {tagTones.map((tone) => (
+                  <button
+                    key={tone}
+                    type="button"
+                    onClick={() => setNewTagTone(tone)}
+                    className={`rounded-full px-3 py-2 text-xs font-semibold ${toneClasses(tone, newTagTone === tone)}`}
+                  >
+                    {tone}
+                  </button>
+                ))}
               </div>
             </form>
           </div>

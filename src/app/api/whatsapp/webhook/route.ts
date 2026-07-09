@@ -3,6 +3,19 @@ import { createBackendSupabaseClient } from "@/lib/supabase"
 import { listCrmRecords, type CrmRecord, upsertCrmRecordById } from "@/services/crm-repository"
 import { isValidZApiWebhook, parseZApiWebhookPayload } from "@/services/zapi"
 
+function isPlaceholderName(value: unknown, phone: string) {
+  const name = String(value ?? "").trim().toLowerCase()
+  const normalizedPhone = phone.replace(/\D/g, "")
+  return !name || name === "contato z-api" || name === normalizedPhone || name === `+${normalizedPhone}`
+}
+
+function resolveStoredContactName(previousData: Record<string, unknown> | undefined, parsedName: string, phone: string) {
+  const previousName = String(previousData?.contactName ?? "").trim()
+  if (previousName && !isPlaceholderName(previousName, phone)) return previousName
+  if (parsedName && !isPlaceholderName(parsedName, phone)) return parsedName
+  return previousName || parsedName || phone
+}
+
 export async function GET() {
   return NextResponse.json({ ok: true, provider: "z-api", status: "webhook ativo" })
 }
@@ -47,7 +60,7 @@ export async function POST(request: Request) {
 
   if (parsed.event === "presence") {
     await upsertCrmRecordById("conversas", conversationId, {
-      contactName: String(previousData?.contactName ?? parsed.contactName ?? parsed.phone),
+      contactName: resolveStoredContactName(previousData, parsed.contactName, parsed.phone),
       phone: parsed.phone,
       source: String(previousData?.source ?? "manual"),
       unread: Number(previousData?.unread ?? 0),
@@ -75,7 +88,7 @@ export async function POST(request: Request) {
   }
 
   await upsertCrmRecordById("conversas", conversationId, {
-    contactName: String(previousData?.contactName ?? parsed.contactName ?? parsed.phone),
+    contactName: resolveStoredContactName(previousData, parsed.contactName, parsed.phone),
     phone: parsed.phone,
     source: String(previousData?.source ?? "manual"),
     unread: parsed.direction === "entrada" ? Number(previousData?.unread ?? 0) + 1 : Number(previousData?.unread ?? 0),
