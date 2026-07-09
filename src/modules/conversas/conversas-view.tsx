@@ -106,9 +106,29 @@ function resolveConversationName(data: Record<string, unknown>, record: CrmRecor
   return currentName || phone || "Contato"
 }
 
+function isAudioLikeMessage(message: Pick<ChatMessage, "kind" | "mediaUrl" | "mimeType">) {
+  return (
+    message.kind === "audio" ||
+    Boolean(message.mimeType?.toLowerCase().startsWith("audio/")) ||
+    Boolean(message.mediaUrl?.match(/\.(ogg|mp3|wav|m4a)(\?|$)/i))
+  )
+}
+
 function conversationFromRecord(record: CrmRecord): Conversation {
   const data = record.data
   const name = resolveConversationName(data, record)
+  const recordMessages = Array.isArray(data.messages) ? data.messages : []
+  const latestMessage = recordMessages.at(-1) as Record<string, unknown> | undefined
+  const latestMessageIsAudio =
+    latestMessage &&
+    isAudioLikeMessage({
+      kind: (latestMessage.kind as ChatMessage["kind"]) ?? "texto",
+      mediaUrl: typeof latestMessage.mediaUrl === "string" ? latestMessage.mediaUrl : undefined,
+      mimeType: typeof latestMessage.mimeType === "string" ? latestMessage.mimeType : undefined,
+    })
+  const fallbackLastMessage =
+    latestMessageIsAudio && String(data.lastMessage ?? "").trim().toLowerCase() === "mensagem" ? "Audio" : undefined
+
   return {
     id: record.id,
     contactName: name,
@@ -123,7 +143,7 @@ function conversationFromRecord(record: CrmRecord): Conversation {
     unread: Number(data.unread ?? 0),
     assignedTo: String(data.assignedTo ?? "Equipe"),
     tags: normalizeConversationTags(data.tags),
-    lastMessage: String(data.lastMessage ?? data.message ?? "Conversa iniciada."),
+    lastMessage: fallbackLastMessage ?? String(data.lastMessage ?? data.message ?? "Conversa iniciada."),
     updatedAt: String(data.updatedAt ?? "agora"),
     presenceStatus:
       data.presenceStatus === "available" ||
@@ -700,17 +720,17 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 <div key={message.id} className={`flex ${message.direction === "saida" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[82%] rounded-3xl px-4 py-3 text-sm shadow-sm sm:max-w-[62%] ${message.direction === "saida" ? "bg-blue-600 text-white" : "border border-slate-200 bg-white text-slate-900"}`}>
                     <div>
-                      {message.kind !== "texto" && (
+                      {message.kind !== "texto" && !isAudioLikeMessage(message) && (
                         <strong className={`mr-2 uppercase ${message.direction === "saida" ? "text-blue-100" : "text-blue-600"}`}>
                           {message.kind}
                         </strong>
                       )}
-                      {message.kind === "audio" && message.mediaUrl ? (
+                      {isAudioLikeMessage(message) && message.mediaUrl ? (
                         <div className="mt-2">
                           <audio controls preload="none" className="max-w-full" src={message.mediaUrl}>
                             Seu navegador nao suporta reproducao de audio.
                           </audio>
-                          {message.content && message.content !== "Audio" ? <p className="mt-2">{message.content}</p> : null}
+                          {message.content && !["audio", "mensagem"].includes(message.content.trim().toLowerCase()) ? <p className="mt-2">{message.content}</p> : null}
                         </div>
                       ) : (
                         <p>{message.content}</p>

@@ -158,16 +158,7 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
     } satisfies ParsedZApiWebhook
   }
 
-  const kind =
-    payload.type === "audio" || payload.type === "ptt"
-      ? "audio"
-      : payload.type === "image"
-        ? "imagem"
-        : payload.type === "video"
-          ? "video"
-          : payload.type === "document"
-            ? "documento"
-            : "texto"
+  const kind = resolveMessageKind(payload)
 
   const media = extractMediaData(payload, kind)
   const message = extractMessageText(payload)
@@ -185,6 +176,22 @@ export function parseZApiWebhookPayload(payload: Record<string, unknown>) {
     direction: (payload.fromMe === true || payload.isSentByMe === true ? "saida" : "entrada") as "entrada" | "saida",
     raw: payload,
   } satisfies ParsedZApiWebhook
+}
+
+function resolveMessageKind(payload: Record<string, unknown>): "texto" | "imagem" | "audio" | "video" | "documento" {
+  const payloadType = String(payload.type ?? "").toLowerCase()
+
+  if (payload.audio && typeof payload.audio === "object") return "audio"
+  if (payload.image && typeof payload.image === "object") return "imagem"
+  if (payload.video && typeof payload.video === "object") return "video"
+  if (payload.document && typeof payload.document === "object") return "documento"
+
+  if (payloadType === "audio" || payloadType === "ptt") return "audio"
+  if (payloadType === "image") return "imagem"
+  if (payloadType === "video") return "video"
+  if (payloadType === "document") return "documento"
+
+  return "texto"
 }
 
 function mapPresenceStatus(value: string): "available" | "unavailable" | "composing" | "paused" | "recording" {
