@@ -1,35 +1,16 @@
 import { NextResponse } from "next/server"
 import { requireApiUser } from "@/app/api/_shared"
 import { createCrmRecord, listCrmRecords, type CrmRecord, upsertCrmRecordById } from "@/services/crm-repository"
-import { sendZApiPresence, sendZApiTextMessage } from "@/services/zapi"
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
+import { sendZApiTextMessage } from "@/services/zapi"
 
 export async function POST(request: Request) {
   const { response } = await requireApiUser()
   if (response) return response
 
-  const body = await request.json().catch(() => null) as { to?: string; message?: string; agentId?: string; conversationId?: string; contactName?: string; simulateTyping?: boolean } | null
+  const body = await request.json().catch(() => null) as { to?: string; message?: string; agentId?: string; conversationId?: string; contactName?: string } | null
   if (!body?.to || !body.message) return NextResponse.json({ error: "Destino e mensagem sao obrigatorios." }, { status: 400 })
 
   try {
-    const simulatedDelayEnabled = body.simulateTyping !== false
-    let presenceResult: unknown = null
-    if (simulatedDelayEnabled) {
-      try {
-        presenceResult = await sendZApiPresence({ to: body.to, status: "composing" })
-      } catch (error) {
-        presenceResult = {
-          simulatedDelay: true,
-          failed: true,
-          reason: error instanceof Error ? error.message : "presence-failed",
-        }
-      }
-      await wait(3000)
-    }
-
     const result = await sendZApiTextMessage({ to: body.to, message: body.message })
     const records = await listCrmRecords("conversas")
     const existingConversation = Array.isArray(records)
@@ -62,7 +43,7 @@ export async function POST(request: Request) {
       updatedAt: "agora",
       messages: [...previousMessages, nextMessage],
       agentId: body.agentId ?? String(previousData?.agentId ?? ""),
-      zapi: { lastSendResult: result, lastPresenceResult: presenceResult },
+      zapi: { lastSendResult: result },
       status: "aberta",
     }
 
@@ -72,7 +53,7 @@ export async function POST(request: Request) {
       await createCrmRecord("conversas", { ...payload, title: payload.contactName })
     }
 
-    return NextResponse.json({ ok: true, result, presenceResult })
+    return NextResponse.json({ ok: true, result })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao enviar pela Z-API." }, { status: 502 })
   }

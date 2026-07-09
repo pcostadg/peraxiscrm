@@ -13,7 +13,7 @@ export function useRealtimeSync(modules: string[]) {
     const supabase = createBrowserSupabaseClient()
     if (!supabase) {
       window.queueMicrotask(() => setStatus("polling"))
-      const interval = window.setInterval(() => setTick((value) => value + 1), 12000)
+      const interval = window.setInterval(() => setTick((value) => value + 1), 1000)
       return () => window.clearInterval(interval)
     }
 

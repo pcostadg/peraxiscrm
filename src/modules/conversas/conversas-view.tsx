@@ -200,7 +200,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     void refreshConversations()
     const interval = window.setInterval(() => {
       void refreshConversations()
-    }, 3000)
+    }, 500)
 
     return () => {
       cancelled = true
@@ -304,7 +304,6 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           message: messageText,
           conversationId: active.id,
           contactName: active.contactName,
-          simulateTyping: true,
         }),
       })
       const result = await response.json()
@@ -760,7 +759,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 <Send size={19} />
               </button>
             </form>
-            {sending && <p className="mt-3 text-xs font-medium text-blue-600">Mostrando digitacao e aguardando 3 segundos antes de enviar a mensagem...</p>}
+            {sending && <p className="mt-3 text-xs font-medium text-blue-600">Enviando mensagem...</p>}
           </footer>
         </section>
       </div>
