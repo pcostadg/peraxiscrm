@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils"
 export function ModuleHeader({
   icon: Icon,
   title,
-  description,
   action,
 }: {
   icon: LucideIcon
@@ -20,7 +19,6 @@ export function ModuleHeader({
         </div>
         <div>
           <h2 className="text-2xl font-bold text-slate-950 sm:text-3xl">{title}</h2>
-          {description?.trim() ? <p className="mt-1 max-w-3xl text-sm text-slate-500 lg:text-base">{description}</p> : null}
         </div>
       </div>
       {action}

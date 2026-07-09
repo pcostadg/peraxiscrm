@@ -6,6 +6,8 @@ import { dashboardChartSeries, dashboardMetrics, dispatchReports, financeEntries
 import { ModuleHeader, PanelCard, Pill } from "@/modules/shared/components"
 import { cn } from "@/lib/utils"
 import { useRealtimeSync } from "@/services/use-realtime-sync"
+import type { CrmRecord } from "@/services/crm-repository"
+import { brl } from "@/modules/shared/data"
 
 const icons = {
   faturamento: CircleDollarSign,
@@ -24,22 +26,70 @@ const toneClasses = {
   slate: "text-slate-700 bg-slate-100 ring-slate-200",
 }
 
-export function DashboardView({ dbCounts }: { dbCounts?: { leads: number; conversas: number; disparos: number; projetos: number; financeiro: number } }) {
+function financeValueFromRecord(record: CrmRecord) {
+  return Number(record.data?.valor ?? 0)
+}
+
+function financeTypeFromRecord(record: CrmRecord) {
+  return String(record.data?.tipo ?? "entrada")
+}
+
+function projectStatusFromRecord(record: CrmRecord) {
+  return String(record.status ?? record.data?.status ?? "")
+}
+
+function leadStatusFromRecord(record: CrmRecord) {
+  return String(record.status ?? record.data?.status ?? "")
+}
+
+export function DashboardView({
+  dbCounts,
+  financeRecords = [],
+  leadRecords = [],
+  projectRecords = [],
+}: {
+  dbCounts?: { leads: number; conversas: number; disparos: number; projetos: number; financeiro: number }
+  financeRecords?: CrmRecord[]
+  leadRecords?: CrmRecord[]
+  projectRecords?: CrmRecord[]
+}) {
   const [activeId, setActiveId] = useState(dashboardMetrics[0]?.id ?? "faturamento")
   const realtime = useRealtimeSync(["leads", "conversas", "disparos", "projetos", "financeiro"])
+  const liveFinanceEntries = financeRecords.length
+    ? financeRecords.map((record) => ({
+        tipo: financeTypeFromRecord(record),
+        valor: financeValueFromRecord(record),
+      }))
+    : financeEntries
+
+  const totalEntradas = liveFinanceEntries.filter((entry) => entry.tipo === "entrada").reduce((sum, entry) => sum + entry.valor, 0)
+  const totalSaidas = liveFinanceEntries.filter((entry) => entry.tipo === "saida").reduce((sum, entry) => sum + entry.valor, 0)
+  const activeProjectsCount = projectRecords.length
+    ? projectRecords.filter((record) => projectStatusFromRecord(record) !== "concluido").length
+    : projects.filter((project) => project.status !== "concluido").length
+  const pendingProjectsCount = projectRecords.length
+    ? projectRecords.filter((record) => {
+        const status = projectStatusFromRecord(record)
+        return status === "backlog" || status === "pendente"
+      }).length
+    : projects.filter((project) => project.status === "backlog").length
+  const closedLeadsCount = leadRecords.length
+    ? leadRecords.filter((record) => leadStatusFromRecord(record) === "fechado").length
+    : leads.filter((lead) => lead.status === "fechado").length
+
   const metrics = dashboardMetrics.map((metric) => {
     if (!dbCounts) return metric
+    if (metric.id === "faturamento") return { ...metric, value: brl(totalEntradas), trend: totalEntradas > 0 ? "recebido" : "0 no periodo" }
     if (metric.id === "leads") return { ...metric, value: String(dbCounts.leads) }
     if (metric.id === "conversas") return { ...metric, value: String(dbCounts.conversas) }
-    if (metric.id === "ativos") return { ...metric, value: String(dbCounts.projetos) }
+    if (metric.id === "ativos") return { ...metric, value: String(activeProjectsCount), trend: `${activeProjectsCount} em andamento` }
+    if (metric.id === "pendentes") return { ...metric, value: String(pendingProjectsCount), trend: `${pendingProjectsCount} pendentes` }
     return metric
   }).filter((metric) => metric.id !== "disparos")
   const activeMetric = metrics.find((metric) => metric.id === activeId) ?? metrics[0]
   const activeSeries = activeMetric.series.length > 0 ? activeMetric.series : [0]
   const maxValue = Math.max(1, ...activeSeries)
   const xDivisor = Math.max(1, activeSeries.length - 1)
-  const totalEntradas = financeEntries.filter((entry) => entry.tipo === "entrada").reduce((sum, entry) => sum + entry.valor, 0)
-  const totalSaidas = financeEntries.filter((entry) => entry.tipo === "saida").reduce((sum, entry) => sum + entry.valor, 0)
 
   const linePoints = activeSeries
     .map((value, index) => {
@@ -51,7 +101,7 @@ export function DashboardView({ dbCounts }: { dbCounts?: { leads: number; conver
 
   return (
     <div className="space-y-6">
-      <ModuleHeader icon={BarChart3} title="Dashboard" description="Indicadores interativos, graficos e resumos da operacao comercial." action={<Pill tone={realtime.status === "tempo real" ? "emerald" : "amber"}>{realtime.status}</Pill>} />
+      <ModuleHeader icon={BarChart3} title="Dashboard" action={<Pill tone={realtime.status === "tempo real" ? "emerald" : "amber"}>{realtime.status}</Pill>} />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {metrics.map((metric) => {
@@ -74,18 +124,18 @@ export function DashboardView({ dbCounts }: { dbCounts?: { leads: number; conver
                 </div>
                 <Pill tone={metric.tone}>{metric.trend}</Pill>
               </div>
-              <p className="mt-5 text-sm text-slate-500">{metric.title}</p>
+              <p className="mt-4 text-sm text-slate-500">{metric.title}</p>
               <p className="mt-1 text-2xl font-bold text-slate-950">{metric.value}</p>
-              <div className="mt-4 flex h-10 items-end gap-1">
+              <div className="mt-3 flex h-7 items-end gap-1">
                 {metric.series.map((value, index) => (
                   <span
                     key={`${metric.id}-${index}`}
                     className={cn("flex-1 rounded-t bg-blue-500/70 transition-all duration-500", isActive ? "bg-blue-600" : "bg-slate-300")}
                     style={{ height: `${Math.max(16, (value / Math.max(1, ...metric.series)) * 100)}%` }}
                   />
-                ))}
-              </div>
-              <p className="mt-3 text-xs text-slate-400">{metric.hint}</p>
+              ))}
+            </div>
+              <p className="mt-2 text-xs text-slate-400">{metric.hint}</p>
             </button>
           )
         })}
@@ -133,8 +183,8 @@ export function DashboardView({ dbCounts }: { dbCounts?: { leads: number; conver
             <h4 className="text-sm font-bold">Distribuicao operacional</h4>
             <div className="mt-4 space-y-4">
               {[
-                ["Leads fechados", leads.filter((lead) => lead.status === "fechado").length, 8],
-                ["Projetos ativos", projects.filter((project) => project.status !== "concluido").length, 6],
+                ["Leads fechados", closedLeadsCount, Math.max(1, closedLeadsCount || 1)],
+                ["Projetos ativos", activeProjectsCount, Math.max(1, activeProjectsCount || 1)],
                 ["Falhas em disparos", dispatchReports.reduce((sum, item) => sum + item.falha, 0), 40],
               ].map(([label, value, max]) => (
                 <div key={String(label)}>

@@ -8,7 +8,7 @@ import { formatCpfCnpj, formatCurrency, formatPhone } from "@/utils/formatters"
 import { useRealtimeSync } from "@/services/use-realtime-sync"
 import type { CrmRecord } from "@/services/crm-repository"
 import type { Lead } from "@/types/crm"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 
 type LeadStage = {
@@ -451,7 +451,6 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       <ModuleHeader
         icon={Users}
         title="Leads"
-        description="Gestao comercial com visual em lista ou kanban, criacao por pop-up e operacao mais limpa para o time."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Pill tone={realtime.status === "tempo real" ? "emerald" : "amber"}>{realtime.status}</Pill>
@@ -628,16 +627,13 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       </PanelCard>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-6xl overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.5)]">
+        <DialogContent className="w-[min(96vw,1400px)] max-w-[min(96vw,1400px)] overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.5)]">
           <form onSubmit={handleSaveLead}>
             <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eff6ff_0%,#ffffff_75%)] px-8 py-6">
               <DialogTitle>{editingLeadId ? "Editar lead" : "Novo lead"}</DialogTitle>
-              <DialogDescription>
-                Cadastro comercial completo, com parcelamento e endereco detalhado para a operacao do time.
-              </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-5 px-8 py-7 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-5 px-8 py-7 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               <Field label="Nome"><input required className={inputClass} value={form.nome} onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))} placeholder="Nome completo" /></Field>
               <Field label="Telefone"><input className={inputClass} inputMode="tel" value={form.telefone} onChange={(event) => setForm((current) => ({ ...current, telefone: formatPhone(event.target.value) }))} placeholder="(00) 00000-0000" /></Field>
               <Field label="Email"><input className={inputClass} type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="cliente@email.com" /></Field>
@@ -671,7 +667,7 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             </div>
 
             <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-5">
-              {loadingCep ? <span className="mr-auto text-sm font-medium text-blue-600">Buscando endereco pelo CEP...</span> : <span className="mr-auto text-sm text-slate-500">Use o CEP para preencher endereco, bairro, cidade e estado automaticamente.</span>}
+              {loadingCep ? <span className="mr-auto text-sm font-medium text-blue-600">Buscando endereco pelo CEP...</span> : <span className="mr-auto" />}
               <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </button>
