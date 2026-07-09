@@ -114,7 +114,7 @@ export function DashboardView({
               type="button"
               onClick={() => setActiveId(metric.id)}
               className={cn(
-                "group flex min-h-[184px] flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:p-5",
+                "group flex flex-col rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:px-5 sm:py-5",
                 isActive ? "border-blue-300 ring-4 ring-blue-100" : "border-slate-200",
               )}
             >
@@ -124,18 +124,18 @@ export function DashboardView({
                 </div>
                 <Pill tone={metric.tone}>{metric.trend}</Pill>
               </div>
-              <p className="mt-3 text-sm text-slate-500">{metric.title}</p>
-              <p className="mt-1 text-[2rem] leading-none font-bold text-slate-950">{metric.value}</p>
-              <div className="mt-3 flex h-5 items-end gap-1">
+              <p className="mt-4 text-sm text-slate-500">{metric.title}</p>
+              <p className="mt-2 text-[2rem] leading-none font-bold text-slate-950">{metric.value}</p>
+              <p className="mt-2 text-xs leading-none text-slate-400">{metric.hint}</p>
+              <div className="mt-3 flex h-3 items-end gap-1">
                 {metric.series.map((value, index) => (
                   <span
                     key={`${metric.id}-${index}`}
                     className={cn("flex-1 rounded-t bg-blue-500/70 transition-all duration-500", isActive ? "bg-blue-600" : "bg-slate-300")}
-                    style={{ height: `${Math.max(16, (value / Math.max(1, ...metric.series)) * 100)}%` }}
+                    style={{ height: `${Math.max(6, (value / Math.max(1, ...metric.series)) * 100)}%` }}
                   />
               ))}
             </div>
-              <p className="mt-2 text-xs leading-none text-slate-400">{metric.hint}</p>
             </button>
           )
         })}
