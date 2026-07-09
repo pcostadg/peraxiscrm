@@ -114,19 +114,19 @@ export function DashboardView({
               type="button"
               onClick={() => setActiveId(metric.id)}
               className={cn(
-                "group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl",
+                "group flex min-h-[184px] flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:p-5",
                 isActive ? "border-blue-300 ring-4 ring-blue-100" : "border-slate-200",
               )}
             >
               <div className="flex items-center justify-between">
-                <div className={cn("flex size-11 items-center justify-center rounded-xl ring-1 transition group-hover:scale-105", toneClasses[metric.tone])}>
-                  <Icon size={21} />
+                <div className={cn("flex size-10 items-center justify-center rounded-xl ring-1 transition group-hover:scale-105 sm:size-11", toneClasses[metric.tone])}>
+                  <Icon size={20} />
                 </div>
                 <Pill tone={metric.tone}>{metric.trend}</Pill>
               </div>
-              <p className="mt-4 text-sm text-slate-500">{metric.title}</p>
-              <p className="mt-1 text-2xl font-bold text-slate-950">{metric.value}</p>
-              <div className="mt-3 flex h-7 items-end gap-1">
+              <p className="mt-3 text-sm text-slate-500">{metric.title}</p>
+              <p className="mt-1 text-[2rem] leading-none font-bold text-slate-950">{metric.value}</p>
+              <div className="mt-3 flex h-5 items-end gap-1">
                 {metric.series.map((value, index) => (
                   <span
                     key={`${metric.id}-${index}`}
@@ -135,7 +135,7 @@ export function DashboardView({
                   />
               ))}
             </div>
-              <p className="mt-2 text-xs text-slate-400">{metric.hint}</p>
+              <p className="mt-2 text-xs leading-none text-slate-400">{metric.hint}</p>
             </button>
           )
         })}
