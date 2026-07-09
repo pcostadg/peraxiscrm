@@ -1,0 +1,162 @@
+/* Reset e Estilos Gerais */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f4f4f4;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Header */
+header {
+    background-color: #004a8e; /* Azul Caixa/Notícias */
+    color: white;
+    padding: 15px 0;
+    border-bottom: 4px solid #ffcc00;
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.date-category {
+    font-size: 14px;
+    opacity: 0.9;
+}
+
+/* Main Content */
+main {
+    background-color: white;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 30px 20px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+h1 {
+    font-size: 32px;
+    line-height: 1.2;
+    margin-bottom: 15px;
+    color: #1a1a1a;
+}
+
+.meta-info {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+.featured-image img {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin-bottom: 25px;
+}
+
+.content p {
+    margin-bottom: 20px;
+    font-size: 18px;
+}
+
+h2 {
+    font-size: 24px;
+    margin: 30px 0 15px;
+    color: #004a8e;
+}
+
+h3 {
+    font-size: 20px;
+    margin: 20px 0 10px;
+}
+
+ul, ol {
+    margin-bottom: 20px;
+    margin-left: 25px;
+    font-size: 18px;
+}
+
+li {
+    margin-bottom: 10px;
+}
+
+/* CTA Buttons */
+.cta-wrapper {
+    text-align: center;
+    margin: 35px 0;
+}
+
+.btn-cta {
+    display: inline-block;
+    background-color: #25d366; /* Verde chamativo */
+    color: white;
+    padding: 18px 30px;
+    font-size: 20px;
+    font-weight: bold;
+    text-decoration: none;
+    border-radius: 50px;
+    box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4);
+    transition: transform 0.2s, background-color 0.2s;
+    animation: pulse 2s infinite;
+}
+
+.btn-cta:hover {
+    background-color: #1ebe57;
+    transform: scale(1.05);
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.03); }
+    100% { transform: scale(1); }
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 20px 0;
+    color: #888;
+    font-size: 14px;
+}
+
+/* Responsividade */
+@media (max-width: 600px) {
+    h1 {
+        font-size: 24px;
+    }
+    
+    .logo {
+        font-size: 20px;
+    }
+
+    .btn-cta {
+        font-size: 16px;
+        padding: 15px 20px;
+        width: 100%;
+    }
+
+    .content p, ul, ol {
+        font-size: 16px;
+    }
+}
+
+@media (min-width: 601px) and (max-width: 1024px) {
+    .container {
+        max-width: 90%;
+    }
+}
