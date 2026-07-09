@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { Eraser, File, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Tag, Trash2, Video, X } from "lucide-react"
 import { chatMessages, conversations } from "@/modules/shared/data"
 import { ModuleHeader, Pill, buttonClass, inputClass, textareaClass } from "@/modules/shared/components"
@@ -114,6 +114,14 @@ function isAudioLikeMessage(message: Pick<ChatMessage, "kind" | "mediaUrl" | "mi
   )
 }
 
+function createClientMessageId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `message-${crypto.randomUUID()}`
+  }
+
+  return `message-${Math.random().toString(36).slice(2)}`
+}
+
 function conversationFromRecord(record: CrmRecord): Conversation {
   const data = record.data
   const name = resolveConversationName(data, record)
@@ -195,6 +203,13 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [cleaningMessages, setCleaningMessages] = useState(false)
   const [deletingConversation, setDeletingConversation] = useState(false)
   const [activeTagFilter, setActiveTagFilter] = useState("")
+  const [recordingAudio, setRecordingAudio] = useState(false)
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState("")
+  const [recordedAudioData, setRecordedAudioData] = useState("")
+  const [recordedAudioMimeType, setRecordedAudioMimeType] = useState("")
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -230,6 +245,17 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       window.clearInterval(interval)
     }
   }, [realtime.tick])
+
+  useEffect(() => {
+    return () => {
+      if (recordedAudioUrl) {
+        URL.revokeObjectURL(recordedAudioUrl)
+      }
+
+      mediaRecorderRef.current?.stop()
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+    }
+  }, [recordedAudioUrl])
 
   const filtered = useMemo(
     () =>
@@ -333,7 +359,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       if (!response.ok) throw new Error(result.error || "Nao foi possivel enviar a mensagem.")
 
       const nextMessage: ChatMessage = {
-        id: `message-${Date.now()}`,
+        id: createClientMessageId(),
         conversationId: active.id,
         direction: "saida",
         kind: "texto",
@@ -360,7 +386,137 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
 
   function handleSendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (recordedAudioData) {
+      void submitRecordedAudio()
+      return
+    }
+
     submitCurrentMessage()
+  }
+
+  async function startAudioRecording() {
+    if (recordingAudio) return
+
+    if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      toast.error("Seu navegador nao permite gravacao de audio nessa tela.")
+      return
+    }
+
+    if (typeof MediaRecorder === "undefined") {
+      toast.error("Gravacao de audio nao suportada nesse navegador.")
+      return
+    }
+
+    try {
+      clearRecordedAudio()
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType =
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+            ? "audio/ogg;codecs=opus"
+            : "audio/webm"
+
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      mediaStreamRef.current = stream
+      mediaRecorderRef.current = recorder
+      audioChunksRef.current = []
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || mimeType || "audio/webm" })
+        if (!blob.size) {
+          setRecordingAudio(false)
+          mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+          mediaStreamRef.current = null
+          return
+        }
+
+        const previewUrl = URL.createObjectURL(blob)
+        setRecordedAudioUrl((current) => {
+          if (current) URL.revokeObjectURL(current)
+          return previewUrl
+        })
+        setRecordedAudioMimeType(blob.type || "audio/webm")
+        void blobToDataUrl(blob).then((dataUrl) => setRecordedAudioData(dataUrl))
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+        mediaStreamRef.current = null
+        mediaRecorderRef.current = null
+        setRecordingAudio(false)
+      }
+
+      recorder.start()
+      setRecordingAudio(true)
+      toast.success("Gravacao iniciada.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel iniciar a gravacao.")
+    }
+  }
+
+  function stopAudioRecording() {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") return
+    mediaRecorderRef.current.stop()
+  }
+
+  function clearRecordedAudio() {
+    setRecordedAudioData("")
+    setRecordedAudioMimeType("")
+    setRecordedAudioUrl((current) => {
+      if (current) URL.revokeObjectURL(current)
+      return ""
+    })
+  }
+
+  async function submitRecordedAudio() {
+    if (!active || !recordedAudioData || sending) return
+
+    setSending(true)
+    const previewUrl = recordedAudioUrl
+    const previewMimeType = recordedAudioMimeType || "audio/webm"
+
+    try {
+      const response = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: active.phone,
+          audio: recordedAudioData,
+          mimeType: previewMimeType,
+          conversationId: active.id,
+          contactName: active.contactName,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Nao foi possivel enviar o audio.")
+
+      const nextMessage: ChatMessage = {
+        id: createClientMessageId(),
+        conversationId: active.id,
+        direction: "saida",
+        kind: "audio",
+        content: "Audio",
+        mediaUrl: previewUrl || recordedAudioData,
+        mimeType: previewMimeType,
+        status: "enviado",
+        time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      }
+
+      setMessageItems((current) => [...current, nextMessage])
+      setConversationItems((current) =>
+        current.map((item) => (item.id === active.id ? { ...item, lastMessage: "Audio", updatedAt: "agora", unread: 0 } : item)),
+      )
+      clearRecordedAudio()
+      toast.success("Audio enviado.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao enviar audio.")
+    } finally {
+      setSending(false)
+    }
   }
 
   async function saveConversationTags(tags: ConversationTag[]) {
@@ -753,6 +909,29 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             <div className="mb-3 flex flex-wrap gap-2">
               {attachmentTypes.map((item) => {
                 const Icon = item.icon
+                if (item.label === "Audio") {
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        if (recordingAudio) {
+                          stopAudioRecording()
+                          return
+                        }
+
+                        void startAudioRecording()
+                      }}
+                      className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${
+                        recordingAudio ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      <Icon size={15} />
+                      {recordingAudio ? "Parar audio" : "Audio"}
+                    </button>
+                  )
+                }
+
                 return (
                   <label key={item.label} className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
                     <Icon size={15} />
@@ -775,6 +954,25 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               })}
             </div>
 
+            {recordingAudio && <p className="mb-3 text-xs font-medium text-rose-600">Gravando audio... clique em Audio novamente para parar.</p>}
+
+            {recordedAudioUrl && (
+              <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <audio controls preload="none" className="max-w-full" src={recordedAudioUrl}>
+                    Seu navegador nao suporta reproducao de audio.
+                  </audio>
+                  <button
+                    type="button"
+                    onClick={clearRecordedAudio}
+                    className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                  >
+                    Cancelar audio
+                  </button>
+                </div>
+              </div>
+            )}
+
             <form className="flex items-end gap-3" onSubmit={handleSendMessage}>
               <button type="button" className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600" aria-label="Anexos">
                 <Paperclip size={20} />
@@ -784,20 +982,25 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 onChange={(event) => setDraft(event.target.value)}
                 className={textareaClass}
                 rows={1}
-                disabled={sending}
+                disabled={sending || recordingAudio}
                 placeholder="Digite uma mensagem. Enter envia, Shift+Enter quebra linha."
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault()
+                    if (recordedAudioData) {
+                      void submitRecordedAudio()
+                      return
+                    }
+
                     submitCurrentMessage()
                   }
                 }}
               />
-              <button className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white disabled:cursor-not-allowed disabled:opacity-60" aria-label="Enviar mensagem" type="submit" disabled={sending}>
+              <button className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white disabled:cursor-not-allowed disabled:opacity-60" aria-label="Enviar mensagem" type="submit" disabled={sending || recordingAudio || (!draft.trim() && !recordedAudioData)}>
                 <Send size={19} />
               </button>
             </form>
-            {sending && <p className="mt-3 text-xs font-medium text-blue-600">Enviando mensagem...</p>}
+            {sending && <p className="mt-3 text-xs font-medium text-blue-600">Enviando...</p>}
           </footer>
         </section>
       </div>
@@ -926,6 +1129,22 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       </Dialog>
     </div>
   )
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+
+      reject(new Error("Nao foi possivel converter o audio para envio."))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler o audio gravado."))
+    reader.readAsDataURL(blob)
+  })
 }
 
 function getPresenceLabel(status?: Conversation["presenceStatus"]) {
