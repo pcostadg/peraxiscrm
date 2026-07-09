@@ -16,6 +16,11 @@ type LeadStage = {
   title: string
 }
 
+type LeadBoardConfig = {
+  id: string | null
+  stages: LeadStage[]
+}
+
 type LeadRecord = Omit<Lead, "status"> & {
   status: string
 }
@@ -103,8 +108,32 @@ function leadFromRecord(record: CrmRecord): LeadRecord {
   }
 }
 
-function buildStages(items: LeadRecord[]) {
-  const base = [...defaultStages]
+function isLeadBoardConfigRecord(record: CrmRecord) {
+  return record.data?.recordType === "lead_stage_config"
+}
+
+function getLeadBoardConfig(records: CrmRecord[]): LeadBoardConfig {
+  const configRecord = records.find(isLeadBoardConfigRecord)
+  const storedStages = Array.isArray(configRecord?.data?.stages)
+    ? configRecord.data.stages
+        .map((stage) => {
+          if (!stage || typeof stage !== "object") return null
+          const item = stage as Record<string, unknown>
+          const id = String(item.id ?? "").trim()
+          const title = String(item.title ?? "").trim()
+          return id && title ? { id, title } : null
+        })
+        .filter((stage): stage is LeadStage => Boolean(stage))
+    : []
+
+  return {
+    id: configRecord?.id ?? null,
+    stages: storedStages,
+  }
+}
+
+function buildStages(items: LeadRecord[], configuredStages: LeadStage[] = []) {
+  const base = configuredStages.length ? [...configuredStages] : [...defaultStages]
   for (const item of items) {
     if (!base.some((stage) => stage.id === item.status)) {
       base.push({ id: item.status, title: titleFromStage(item.status) })
@@ -135,15 +164,19 @@ function formFromLead(lead: LeadRecord): LeadFormState {
 
 export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const realtime = useRealtimeSync(["leads"])
-  const initialLeads = dbRecords.length ? dbRecords.map(leadFromRecord) : leads
+  const leadRecords = dbRecords.filter((record) => !isLeadBoardConfigRecord(record))
+  const boardConfig = getLeadBoardConfig(dbRecords)
+  const initialLeads = leadRecords.length ? leadRecords.map(leadFromRecord) : leads
   const [viewMode, setViewMode] = useState<"lista" | "kanban">("lista")
   const [leadItems, setLeadItems] = useState<LeadRecord[]>(initialLeads)
-  const [stages, setStages] = useState<LeadStage[]>(buildStages(initialLeads))
+  const [stages, setStages] = useState<LeadStage[]>(buildStages(initialLeads, boardConfig.stages))
+  const [boardConfigId, setBoardConfigId] = useState<string | null>(boardConfig.id)
   const [query, setQuery] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null)
   const [draggingLeadId, setDraggingLeadId] = useState<string | null>(null)
   const [form, setForm] = useState<LeadFormState>(emptyLeadForm)
+  const [savingStages, setSavingStages] = useState(false)
 
   const filteredLeads = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -253,11 +286,100 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     setStages((current) => current.map((stage) => (stage.id === id ? { ...stage, title } : stage)))
   }
 
-  function handleAddStage() {
+  async function persistStages(nextStages: LeadStage[]) {
+    setSavingStages(true)
+    try {
+      const payload = {
+        id: boardConfigId ?? undefined,
+        title: "Configuracao do kanban de leads",
+        recordType: "lead_stage_config",
+        stages: nextStages,
+        status: "config",
+      }
+
+      const response = await fetch("/api/leads", {
+        method: boardConfigId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Nao foi possivel salvar as colunas.")
+
+      const persisted = (result.data ?? result) as CrmRecord
+      if (persisted?.id) setBoardConfigId(persisted.id)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao salvar colunas.")
+      throw error
+    } finally {
+      setSavingStages(false)
+    }
+  }
+
+  async function handleAddStage() {
     const nextNumber = stages.length + 1
     const title = `Nova etapa ${nextNumber}`
     const id = normalizeStageId(title)
-    setStages((current) => [...current, { id, title }])
+    const nextStages = [...stages, { id, title }]
+    setStages(nextStages)
+    try {
+      await persistStages(nextStages)
+      toast.success("Coluna criada.")
+    } catch {}
+  }
+
+  async function handleDeleteStage(stageId: string) {
+    if (stages.length <= 1) {
+      toast.error("Voce precisa manter ao menos uma coluna no kanban.")
+      return
+    }
+
+    const stage = stages.find((item) => item.id === stageId)
+    if (!stage) return
+
+    const targetStage = stages.find((item) => item.id !== stageId)
+    if (!targetStage) return
+
+    const stageLeads = leadItems.filter((item) => item.status === stageId)
+    const previousLeads = leadItems
+    const previousStages = stages
+    const nextStages = stages.filter((item) => item.id !== stageId)
+    const nextLeads = leadItems.map((item) => (item.status === stageId ? { ...item, status: targetStage.id } : item))
+
+    if (
+      !window.confirm(
+        stageLeads.length
+          ? `Excluir a coluna ${stage.title}? Os ${stageLeads.length} leads dela vao para ${targetStage.title}.`
+          : `Excluir a coluna ${stage.title}?`,
+      )
+    ) {
+      return
+    }
+
+    setStages(nextStages)
+    setLeadItems(nextLeads)
+
+    try {
+      await Promise.all(
+        stageLeads.map(async (lead) => {
+          const response = await fetch("/api/leads", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...lead, status: targetStage.id }),
+          })
+          if (!response.ok) {
+            const result = await response.json().catch(() => ({}))
+            throw new Error(result.error || `Nao foi possivel mover o lead ${lead.nome}.`)
+          }
+        }),
+      )
+
+      await persistStages(nextStages)
+      toast.success("Coluna excluida.")
+    } catch (error) {
+      setStages(previousStages)
+      setLeadItems(previousLeads)
+      toast.error(error instanceof Error ? error.message : "Falha ao excluir coluna.")
+    }
   }
 
   function moveLeadToStage(leadId: string, stageId: string) {
@@ -312,7 +434,7 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           </div>
 
           {viewMode === "kanban" && (
-            <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={handleAddStage}>
+            <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60" onClick={() => void handleAddStage()} disabled={savingStages}>
               <Plus size={18} />
               Nova coluna
             </button>
@@ -379,10 +501,22 @@ export function LeadsView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                     <input
                       value={stage.title}
                       onChange={(event) => handleStageRename(stage.id, event.target.value)}
+                      onBlur={() => void persistStages(stages)}
                       className="w-full bg-transparent text-sm font-bold text-slate-900 outline-none"
                     />
                   </div>
-                  <Pill tone="slate">{stage.items.length}</Pill>
+                  <div className="flex items-center gap-2">
+                    <Pill tone="slate">{stage.items.length}</Pill>
+                    <button
+                      type="button"
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => void handleDeleteStage(stage.id)}
+                      disabled={savingStages}
+                      aria-label={`Excluir coluna ${stage.title}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-4 flex-1 space-y-3 rounded-2xl bg-slate-50/80 p-2">
