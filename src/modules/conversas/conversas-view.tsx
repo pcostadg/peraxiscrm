@@ -272,6 +272,9 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const active = conversationItems.find((item) => item.id === activeId) ?? conversationItems[0]
   const messages = messageItems.filter((message) => message.conversationId === active?.id)
   const activePresenceLabel = getPresenceLabel(active?.presenceStatus)
+  const canSendText = Boolean(draft.trim())
+  const canSendAudio = Boolean(recordedAudioData)
+  const showMicrophoneAction = !canSendText && !canSendAudio
   const availableTags = useMemo(
     () =>
       Array.from(
@@ -996,9 +999,33 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                   }
                 }}
               />
-              <button className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white disabled:cursor-not-allowed disabled:opacity-60" aria-label="Enviar mensagem" type="submit" disabled={sending || recordingAudio || (!draft.trim() && !recordedAudioData)}>
-                <Send size={19} />
-              </button>
+              {showMicrophoneAction ? (
+                <button
+                  className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label={recordingAudio ? "Parar gravacao" : "Gravar audio"}
+                  type="button"
+                  disabled={sending}
+                  onClick={() => {
+                    if (recordingAudio) {
+                      stopAudioRecording()
+                      return
+                    }
+
+                    void startAudioRecording()
+                  }}
+                >
+                  <Mic size={19} />
+                </button>
+              ) : (
+                <button
+                  className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label="Enviar mensagem"
+                  type="submit"
+                  disabled={sending || recordingAudio || (!canSendText && !canSendAudio)}
+                >
+                  <Send size={19} />
+                </button>
+              )}
             </form>
             {sending && <p className="mt-3 text-xs font-medium text-blue-600">Enviando...</p>}
           </footer>
