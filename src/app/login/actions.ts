@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation"
 import { z } from "zod"
 import { ROUTES } from "@/config/routes"
-import { signInAdmin, signOut } from "@/lib/auth"
+import { getDefaultPanelRoute, signInAdmin, signOut } from "@/lib/auth"
 
 const loginSchema = z.object({
   username: z.string().trim().min(2, "Informe o usuario."),
@@ -26,7 +26,7 @@ export async function loginAction(_: LoginState, formData: FormData): Promise<Lo
 
   if (!user) return { error: "Usuario ou senha invalidos." }
 
-  redirect(ROUTES.DASHBOARD)
+  redirect(getDefaultPanelRoute(user.role))
 }
 
 export async function logoutAction() {

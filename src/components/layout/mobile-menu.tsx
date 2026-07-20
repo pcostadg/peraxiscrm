@@ -34,14 +34,18 @@ const menu: NavItem[] = [
   { label: "Financeiro", href: ROUTES.FINANCEIRO, icon: CreditCard },
   { label: "Agentes", href: ROUTES.AGENTES, icon: Bot },
   { label: "Equipe", href: ROUTES.EQUIPE, icon: Building2, adminOnly: true },
-  { label: "Testers", href: ROUTES.TESTERS, icon: PackageSearch },
+  { label: "Testers", href: ROUTES.TESTERS, icon: PackageSearch, roles: ["admin", "funcionario", "tester"] },
   { label: "Configurações", href: ROUTES.CONFIGURACOES, icon: Settings },
 ]
 
 export function MobileMenu({ user }: { user: SessionUser }) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
-  const items = menu.filter((item) => !item.adminOnly || user.role === "admin")
+  const items = menu.filter((item) => {
+    if (item.roles && !item.roles.includes(user.role)) return false
+    if (user.role === "tester") return item.href === ROUTES.TESTERS
+    return !item.adminOnly || user.role === "admin"
+  })
 
   return (
     <div className="lg:hidden">

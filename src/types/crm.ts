@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react"
 
-export type UserRole = "admin" | "funcionario"
+export type UserRole = "admin" | "funcionario" | "tester"
 export type EntityStatus = "ativo" | "inativo"
 export type LeadStatus = "novo" | "contato" | "qualificado" | "proposta" | "fechado" | "perdido"
 export type ProjectStatus = "backlog" | "em_andamento" | "revisao" | "concluido"
@@ -29,6 +29,7 @@ export type NavItem = {
   href: string
   icon: LucideIcon
   adminOnly?: boolean
+  roles?: UserRole[]
 }
 
 export type DashboardMetric = {

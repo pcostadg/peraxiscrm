@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
-import { ROUTES } from "@/config/routes"
+import { getDefaultPanelRoute, requireAuth } from "@/lib/auth"
 
-export default function PainelPage() {
-  redirect(ROUTES.DASHBOARD)
+export default async function PainelPage() {
+  const user = await requireAuth()
+  redirect(getDefaultPanelRoute(user.role))
 }

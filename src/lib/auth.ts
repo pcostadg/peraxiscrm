@@ -72,6 +72,11 @@ function verifyToken(token?: string): SessionUser | null {
   }
 }
 
+export function getDefaultPanelRoute(role: UserRole) {
+  if (role === "tester") return ROUTES.TESTERS
+  return ROUTES.DASHBOARD
+}
+
 export async function signInAdmin(username: string, password: string) {
   const supabaseUser = await signInSupabaseUser(username, password)
   if (supabaseUser) {
@@ -100,9 +105,16 @@ export async function signInAdmin(username: string, password: string) {
   return rootUser
 }
 
-async function signInSupabaseUser(username: string, password: string) {
+async function signInSupabaseUser(usernameOrEmail: string, password: string) {
+  const identifier = usernameOrEmail.trim()
   const data = await prisma.appUser.findFirst({
-    where: { username, status: "ativo" },
+    where: {
+      status: "ativo",
+      OR: [
+        { username: identifier },
+        { email: identifier.toLowerCase() },
+      ],
+    },
     select: { id: true, name: true, username: true, email: true, role: true, passwordHash: true },
   }).catch(() => null)
 
@@ -132,7 +144,7 @@ export async function getCurrentUser() {
 export async function requireAuth(role?: UserRole) {
   const user = await getCurrentUser()
   if (!user) redirect(ROUTES.LOGIN)
-  if (role && user.role !== role) redirect(ROUTES.DASHBOARD)
+  if (role && user.role !== role) redirect(getDefaultPanelRoute(user.role))
   return user
 }
 
