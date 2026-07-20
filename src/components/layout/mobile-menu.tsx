@@ -15,6 +15,7 @@ import {
   Menu,
   MessageCircle,
   Repeat2,
+  PackageSearch,
   Settings,
   Users,
   X,
@@ -33,6 +34,7 @@ const menu: NavItem[] = [
   { label: "Financeiro", href: ROUTES.FINANCEIRO, icon: CreditCard },
   { label: "Agentes", href: ROUTES.AGENTES, icon: Bot },
   { label: "Equipe", href: ROUTES.EQUIPE, icon: Building2, adminOnly: true },
+  { label: "Testers", href: ROUTES.TESTERS, icon: PackageSearch },
   { label: "Configurações", href: ROUTES.CONFIGURACOES, icon: Settings },
 ]
 
