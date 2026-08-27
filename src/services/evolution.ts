@@ -110,9 +110,7 @@ export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
     },
     body: JSON.stringify({
       number: normalizePhone(input.to),
-      textMessage: {
-        text: input.message,
-      },
+      text: input.message,
     }),
     cache: "no-store",
   })
