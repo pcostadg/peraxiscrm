@@ -49,6 +49,26 @@ function formatRepositoryError(action: string, error: unknown) {
   return new Error(`Falha ao ${action}.`)
 }
 
+function sanitizeJsonValue(value: unknown): Prisma.InputJsonValue {
+  if (value === null) return null
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value
+  if (value instanceof Date) return value.toISOString()
+
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === "undefined" ? null : sanitizeJsonValue(item)))
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).flatMap(([key, item]) => (
+      typeof item === "undefined" ? [] : [[key, sanitizeJsonValue(item)] as const]
+    ))
+
+    return Object.fromEntries(entries) as Prisma.InputJsonObject
+  }
+
+  return String(value)
+}
+
 export async function listCrmRecords(module: CrmModule, ownerUserId?: string) {
   try {
     const data = await prisma.crmRecord.findMany({
@@ -79,6 +99,7 @@ export async function createCrmRecord(module: CrmModule, payload: Record<string,
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
   const id = typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : randomUUID()
+  const normalizedPayload = sanitizeJsonValue(payload)
   try {
     const data = await prisma.crmRecord.create({
       data: {
@@ -87,7 +108,7 @@ export async function createCrmRecord(module: CrmModule, payload: Record<string,
         title,
         status,
         ownerUserId: ownerUserId ?? null,
-        data: payload as Prisma.InputJsonValue,
+        data: normalizedPayload,
       },
     })
 
@@ -110,6 +131,7 @@ export async function createCrmRecord(module: CrmModule, payload: Record<string,
 export async function updateCrmRecord(module: CrmModule, id: string, payload: Record<string, unknown>, ownerUserId?: string) {
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
+  const normalizedPayload = sanitizeJsonValue(payload)
   try {
     const record = await prisma.crmRecord.findUnique({
       where: { id },
@@ -121,7 +143,7 @@ export async function updateCrmRecord(module: CrmModule, id: string, payload: Re
 
     const data = await prisma.crmRecord.update({
       where: { id },
-      data: { title, status, data: payload as Prisma.InputJsonValue },
+      data: { title, status, data: normalizedPayload },
     })
 
     return {
@@ -143,6 +165,7 @@ export async function updateCrmRecord(module: CrmModule, id: string, payload: Re
 export async function upsertCrmRecordById(module: CrmModule, id: string, payload: Record<string, unknown>, ownerUserId?: string) {
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
+  const normalizedPayload = sanitizeJsonValue(payload)
   try {
     const data = await prisma.crmRecord.upsert({
       where: { id },
@@ -152,9 +175,9 @@ export async function upsertCrmRecordById(module: CrmModule, id: string, payload
         title,
         status,
         ownerUserId: ownerUserId ?? null,
-        data: payload as Prisma.InputJsonValue,
+        data: normalizedPayload,
       },
-      update: { module, title, status, data: payload as Prisma.InputJsonValue },
+      update: { module, title, status, data: normalizedPayload },
     })
 
     return {
