@@ -11,9 +11,8 @@ import { toast } from "sonner"
 
 type AgentRecord = Agent & {
   numero: string
-  instanceId: string
-  instanceToken: string
-  clientToken: string
+  instanceName: string
+  apiKey: string
   baseUrl: string
   sendTextUrl: string
 }
@@ -23,9 +22,8 @@ type AgentFormState = {
   descricao: string
   status: Agent["status"]
   numero: string
-  instanceId: string
-  instanceToken: string
-  clientToken: string
+  instanceName: string
+  apiKey: string
   baseUrl: string
   sendTextUrl: string
 }
@@ -35,9 +33,8 @@ const emptyAgentForm: AgentFormState = {
   descricao: "",
   status: "ativo",
   numero: "",
-  instanceId: "",
-  instanceToken: "",
-  clientToken: "",
+  instanceName: "",
+  apiKey: "",
   baseUrl: "",
   sendTextUrl: "",
 }
@@ -56,14 +53,13 @@ function agentFromRecord(record: CrmRecord): AgentRecord {
     descricao: String(data.descricao ?? ""),
     status: (record.status as Agent["status"]) ?? "ativo",
     numero: String(data.numero ?? ""),
-    instanceId: String(data.instanceId ?? ""),
-    instanceToken: String(data.instanceToken ?? ""),
-    clientToken: String(data.clientToken ?? ""),
+    instanceName: String(data.instanceName ?? data.instanceId ?? ""),
+    apiKey: String(data.apiKey ?? data.clientToken ?? ""),
     baseUrl: String(data.baseUrl ?? ""),
     sendTextUrl: String(data.sendTextUrl ?? ""),
-    phoneNumberId: String(data.instanceId ?? ""),
-    wabaId: String(data.clientToken ?? ""),
-    verifyTokenMasked: maskSecret(String(data.instanceToken ?? "")),
+    phoneNumberId: String(data.instanceName ?? data.instanceId ?? ""),
+    wabaId: String(data.apiKey ?? data.clientToken ?? ""),
+    verifyTokenMasked: maskSecret(String(data.apiKey ?? data.clientToken ?? "")),
     fluxo: Array.isArray(data.fluxo)
       ? data.fluxo.map((step, index) => ({
           id: String(index),
@@ -80,9 +76,8 @@ function formFromAgent(agent: AgentRecord): AgentFormState {
     descricao: agent.descricao,
     status: agent.status,
     numero: agent.numero,
-    instanceId: agent.instanceId,
-    instanceToken: agent.instanceToken,
-    clientToken: agent.clientToken,
+    instanceName: agent.instanceName,
+    apiKey: agent.apiKey,
     baseUrl: agent.baseUrl,
     sendTextUrl: agent.sendTextUrl,
   }
@@ -92,9 +87,8 @@ export function AgentesView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const initialAgents = dbRecords.length ? dbRecords.map(agentFromRecord) : agents.map((agent) => ({
     ...agent,
     numero: "",
-    instanceId: agent.phoneNumberId,
-    instanceToken: "",
-    clientToken: agent.wabaId,
+    instanceName: agent.phoneNumberId,
+    apiKey: agent.wabaId,
     baseUrl: "",
     sendTextUrl: "",
   }))
@@ -125,18 +119,17 @@ export function AgentesView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       descricao: form.descricao.trim(),
       status: form.status,
       numero: form.numero.trim(),
-      instanceId: form.instanceId.trim(),
-      instanceToken: form.instanceToken.trim(),
-      clientToken: form.clientToken.trim(),
+      instanceName: form.instanceName.trim(),
+      apiKey: form.apiKey.trim(),
       baseUrl: form.baseUrl.trim(),
       sendTextUrl: form.sendTextUrl.trim(),
-      phoneNumberId: form.instanceId.trim(),
-      wabaId: form.clientToken.trim(),
-      verifyTokenMasked: maskSecret(form.instanceToken.trim()),
+      phoneNumberId: form.instanceName.trim(),
+      wabaId: form.apiKey.trim(),
+      verifyTokenMasked: maskSecret(form.apiKey.trim()),
       fluxo: [
         { id: "1", title: "Recepcao", detail: "Entrada do numero e saudacao inicial." },
         { id: "2", title: "Qualificacao", detail: "Identifica contexto e encaminha o atendimento." },
-        { id: "3", title: "Execucao", detail: "Opera com a instancia Z-API vinculada ao agente." },
+        { id: "3", title: "Execucao", detail: "Opera com a instancia Evolution API vinculada ao agente." },
       ],
     }
 
@@ -189,7 +182,7 @@ export function AgentesView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       <ModuleHeader
         icon={Bot}
         title="Agentes"
-        description="Cadastro por pop-up com credenciais da Z-API tratadas para uso seguro no backend."
+        description="Cadastro por pop-up com credenciais da Evolution API tratadas para uso seguro no backend."
         action={
           <button type="button" className={buttonClass} onClick={openNewAgent}>
             <Plus size={18} />
@@ -202,9 +195,9 @@ export function AgentesView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-0.5 text-blue-600" size={18} />
           <div>
-            <p className="text-sm font-semibold text-slate-900">Z-API configurada com seguranca</p>
+            <p className="text-sm font-semibold text-slate-900">Evolution API configurada com seguranca</p>
             <p className="mt-1 text-sm text-slate-600">
-              As credenciais devem ficar trafegando e armazenadas pelo backend. Aqui o time gerencia o agente e a referencia da instancia, sem expor token em tela publica.
+              As credenciais devem ficar trafegando e armazenadas pelo backend. Aqui o time gerencia o agente e a referencia da instancia, sem expor a chave em tela publica.
             </p>
           </div>
         </div>
@@ -236,12 +229,12 @@ export function AgentesView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                   <strong className="mt-1 block text-slate-900">{agent.numero || "Nao informado"}</strong>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
-                  <span className="text-slate-500">Instance ID</span>
-                  <strong className="mt-1 block text-slate-900">{agent.instanceId || "Nao informado"}</strong>
+                  <span className="text-slate-500">Instance Name</span>
+                  <strong className="mt-1 block text-slate-900">{agent.instanceName || "Nao informado"}</strong>
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3">
-                  <span className="text-slate-500">Client Token</span>
-                  <strong className="mt-1 block text-slate-900">{maskSecret(agent.clientToken)}</strong>
+                  <span className="text-slate-500">API Key</span>
+                  <strong className="mt-1 block text-slate-900">{maskSecret(agent.apiKey)}</strong>
                 </div>
               </div>
 
@@ -272,7 +265,7 @@ export function AgentesView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
         <DialogContent className="w-[min(96vw,1320px)] max-w-[min(96vw,1320px)] overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
           <form onSubmit={handleSaveAgent}>
             <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
-              <DialogTitle>{editingAgentId ? "Editar agente" : "Novo agente Z-API"}</DialogTitle>
+              <DialogTitle>{editingAgentId ? "Editar agente" : "Novo agente Evolution API"}</DialogTitle>
               <DialogDescription>
                 Cadastre os dados operacionais da instancia. O ideal e persistir as credenciais reais no backend, nunca em componentes publicos.
               </DialogDescription>
@@ -282,11 +275,10 @@ export function AgentesView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               <Field label="Nome"><input required className={inputClass} value={form.nome} onChange={(event) => setForm((current) => ({ ...current, nome: event.target.value }))} placeholder="Agente comercial" /></Field>
               <Field label="Status"><select className={inputClass} value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as Agent["status"] }))}><option value="ativo">ativo</option><option value="inativo">inativo</option></select></Field>
               <Field label="Numero"><input className={inputClass} value={form.numero} onChange={(event) => setForm((current) => ({ ...current, numero: event.target.value }))} placeholder="+5511999999999" /></Field>
-              <Field label="Instance ID"><input className={inputClass} value={form.instanceId} onChange={(event) => setForm((current) => ({ ...current, instanceId: event.target.value }))} placeholder="ID da instancia" /></Field>
-              <Field label="Instance token"><input className={inputClass} type="password" value={form.instanceToken} onChange={(event) => setForm((current) => ({ ...current, instanceToken: event.target.value }))} placeholder="Token da instancia" /></Field>
-              <Field label="Client token"><input className={inputClass} type="password" value={form.clientToken} onChange={(event) => setForm((current) => ({ ...current, clientToken: event.target.value }))} placeholder="Client token" /></Field>
-              <Field label="Base URL"><input className={inputClass} value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://api.z-api.io/instances/..." /></Field>
-              <Field label="Send text URL"><input className={inputClass} value={form.sendTextUrl} onChange={(event) => setForm((current) => ({ ...current, sendTextUrl: event.target.value }))} placeholder="Endpoint de envio" /></Field>
+              <Field label="Instance Name"><input className={inputClass} value={form.instanceName} onChange={(event) => setForm((current) => ({ ...current, instanceName: event.target.value }))} placeholder="nome-da-instancia" /></Field>
+              <Field label="API Key"><input className={inputClass} type="password" value={form.apiKey} onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder="apikey da Evolution" /></Field>
+              <Field label="Base URL"><input className={inputClass} value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://sua-evolution.exemplo.com" /></Field>
+              <Field label="Endpoint de envio"><input className={inputClass} value={form.sendTextUrl} onChange={(event) => setForm((current) => ({ ...current, sendTextUrl: event.target.value }))} placeholder="/message/sendText/instancia" /></Field>
               <div className="md:col-span-2 xl:col-span-4">
                 <Field label="Descricao">
                   <textarea className={textareaClass} value={form.descricao} onChange={(event) => setForm((current) => ({ ...current, descricao: event.target.value }))} placeholder="Regras, objetivo e observacoes do agente" />

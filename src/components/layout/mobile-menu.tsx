@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
@@ -15,7 +15,6 @@ import {
   Menu,
   MessageCircle,
   Repeat2,
-  PackageSearch,
   Settings,
   Users,
   X,
@@ -34,18 +33,24 @@ const menu: NavItem[] = [
   { label: "Financeiro", href: ROUTES.FINANCEIRO, icon: CreditCard },
   { label: "Agentes", href: ROUTES.AGENTES, icon: Bot },
   { label: "Equipe", href: ROUTES.EQUIPE, icon: Building2, adminOnly: true },
-  { label: "Testers", href: ROUTES.TESTERS, icon: PackageSearch, roles: ["admin", "funcionario", "tester"] },
   { label: "Configurações", href: ROUTES.CONFIGURACOES, icon: Settings },
 ]
 
 export function MobileMenu({ user }: { user: SessionUser }) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
-  const items = menu.filter((item) => {
-    if (item.roles && !item.roles.includes(user.role)) return false
-    if (user.role === "tester") return item.href === ROUTES.TESTERS
-    return !item.adminOnly || user.role === "admin"
-  })
+  const items = menu.filter((item) => !item.adminOnly || user.role === "admin")
+
+  useEffect(() => {
+    if (!open) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [open])
 
   return (
     <div className="lg:hidden">
@@ -59,8 +64,15 @@ export function MobileMenu({ user }: { user: SessionUser }) {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/50">
-          <aside className="h-full w-80 max-w-[85%] overflow-y-auto bg-white p-5 shadow-2xl">
+        <div className="fixed inset-0 z-[70] flex">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/45 backdrop-blur-[1px]"
+            onClick={() => setOpen(false)}
+            aria-label="Fechar menu"
+          />
+
+          <aside className="relative z-10 h-dvh w-[min(85vw,320px)] overflow-y-auto border-r border-slate-200 bg-white p-5 shadow-[0_32px_80px_-40px_rgba(15,23,42,0.45)]">
             <div className="mb-8 flex items-center justify-between">
               <Image
                 src="/logo.png"
@@ -81,7 +93,7 @@ export function MobileMenu({ user }: { user: SessionUser }) {
               </button>
             </div>
 
-            <nav className="space-y-2">
+            <nav className="space-y-2 pb-6">
               {items.map((item) => {
                 const Icon = item.icon
                 const active =

@@ -13,8 +13,6 @@ export const ROUTES = {
   FINANCEIRO: "/painel/financeiro",
   AGENTES: "/painel/agentes",
   EQUIPE: "/painel/equipe",
-  TESTERS: "/painel/testers",
-  TESTERS_CADASTROS: "/painel/testers/cadastros",
   CONFIGURACOES: "/painel/configuracoes",
 
   API_AUTH_LOGIN: "/api/auth/login",
@@ -51,6 +49,5 @@ export const PANEL_ROUTES = [
   ROUTES.FINANCEIRO,
   ROUTES.AGENTES,
   ROUTES.EQUIPE,
-  ROUTES.TESTERS,
   ROUTES.CONFIGURACOES,
 ] as const

@@ -1,14 +1,19 @@
- "use client"
+"use client"
 
-import { LogOut, MoonStar, Search, Sun } from "lucide-react"
-import { useTheme } from "next-themes"
+import { LogOut, Search, Sun } from "lucide-react"
 import { logoutAction } from "@/app/login/actions"
 import { MobileMenu } from "@/components/layout/mobile-menu"
 import type { SessionUser } from "@/types/crm"
 
-export function Topbar({ user }: { user: SessionUser }) {
-  const { resolvedTheme, setTheme } = useTheme()
-
+export function Topbar({
+  user,
+  environmentLabel,
+  databaseLabel,
+}: {
+  user: SessionUser
+  environmentLabel?: string
+  databaseLabel?: string
+}) {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-slate-200/80 bg-white/85 px-4 backdrop-blur sm:h-20 sm:px-6 xl:px-8">
       <div className="flex items-center gap-4">
@@ -21,6 +26,11 @@ export function Topbar({ user }: { user: SessionUser }) {
           <p className="hidden text-xs text-slate-500 sm:block">
             {user.name} · {user.role === "admin" ? "Administrador" : "Funcionario"}
           </p>
+          {(environmentLabel || databaseLabel) ? (
+            <p className="hidden text-[11px] text-slate-400 lg:block">
+              {environmentLabel}{databaseLabel ? ` · ${databaseLabel}` : ""}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -33,18 +43,10 @@ export function Topbar({ user }: { user: SessionUser }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-medium text-slate-600 sm:px-3">
-          {resolvedTheme === "dark" ? <MoonStar size={16} /> : <Sun size={16} />}
-          <select
-            value={resolvedTheme === "dark" ? "dark" : "light"}
-            onChange={(event) => setTheme(event.target.value)}
-            className="max-w-20 bg-transparent text-sm outline-none sm:max-w-none"
-            aria-label="Tema"
-          >
-            <option value="light">Claro</option>
-            <option value="dark">Escuro</option>
-          </select>
-        </label>
+        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2.5 py-2 text-sm font-medium text-slate-600 sm:px-3">
+          <Sun size={16} />
+          <span>Claro</span>
+        </div>
 
         <form action={logoutAction}>
           <button type="submit" className="rounded-2xl border border-slate-200 bg-white p-3 text-slate-600 hover:bg-slate-100" title="Sair">

@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react"
 
-export type UserRole = "admin" | "funcionario" | "tester"
+export type UserRole = "admin" | "funcionario"
 export type EntityStatus = "ativo" | "inativo"
 export type LeadStatus = "novo" | "contato" | "qualificado" | "proposta" | "fechado" | "perdido"
 export type ProjectStatus = "backlog" | "em_andamento" | "revisao" | "concluido"
@@ -29,7 +29,6 @@ export type NavItem = {
   href: string
   icon: LucideIcon
   adminOnly?: boolean
-  roles?: UserRole[]
 }
 
 export type DashboardMetric = {
@@ -68,8 +67,11 @@ export type ChatMessage = {
   kind: MessageKind
   content: string
   mediaUrl?: string
+  previewUrl?: string
   mimeType?: string
   fileName?: string
+  zapiMessageId?: string
+  zapiZaapId?: string
   status: DispatchStatus
   time: string
 }
@@ -81,6 +83,7 @@ export type Lead = {
   email: string
   cpfCnpj: string
   endereco: string
+  complemento?: string
   enderecoNumero?: string
   bairro?: string
   cidade?: string
@@ -95,6 +98,9 @@ export type Lead = {
   vencimento: string
   responsavel: string
   formaPagamento: string
+  parcelado?: boolean
+  entradaPaga?: boolean
+  valorEntrada?: number
   quantidadeParcelas?: number
   valorParcela?: number
   statusPagamento: PaymentStatus

@@ -3,20 +3,7 @@ import "server-only"
 import type { Prisma } from "@prisma/client"
 import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/prisma"
-import {
-  agents,
-  chatMessages,
-  companySettings,
-  conversations,
-  dispatchReports,
-  financeEntries,
-  leads,
-  paymentNotifications,
-  projectColumns,
-  projects,
-  recurringClients,
-  teamMembers,
-} from "@/modules/shared/data"
+import type { UserRole } from "@/types/crm"
 
 export type CrmModule = "conversas" | "leads" | "projetos" | "disparos" | "recorrentes" | "notificar" | "financeiro" | "agentes" | "equipe" | "configuracoes"
 
@@ -25,22 +12,10 @@ export type CrmRecord = {
   module: CrmModule
   title: string
   status: string | null
+  owner_user_id: string | null
   data: Record<string, unknown>
   created_at: string | Date
   updated_at: string | Date
-}
-
-const fallbackData = {
-  conversas: { conversations, messages: chatMessages },
-  leads,
-  projetos: { columns: projectColumns, projects },
-  disparos: dispatchReports,
-  recorrentes: recurringClients,
-  notificar: paymentNotifications,
-  financeiro: financeEntries,
-  agentes: agents,
-  equipe: teamMembers,
-  configuracoes: companySettings,
 }
 
 function slugifyUsername(value: string) {
@@ -54,23 +29,20 @@ function slugifyUsername(value: string) {
   return base || `usuario.${Date.now()}`
 }
 
-function isDatabaseFallbackError(error: unknown) {
-  if (!(error instanceof Error)) return false
-
-  return [
-    "PrismaClientInitializationError",
-    "Can't reach database server",
-    "tenant/user",
-    "ENOTFOUND",
-    "ECONNREFUSED",
-    "Error querying the database",
-  ].some((snippet) => error.name.includes(snippet) || error.message.includes(snippet))
+function formatRepositoryError(action: string, error: unknown) {
+  if (error instanceof Error) {
+    return new Error(`Falha ao ${action}: ${error.message}`)
+  }
+  return new Error(`Falha ao ${action}.`)
 }
 
-export async function listCrmRecords(module: CrmModule) {
+export async function listCrmRecords(module: CrmModule, ownerUserId?: string) {
   try {
     const data = await prisma.crmRecord.findMany({
-      where: { module },
+      where: {
+        module,
+        ...(ownerUserId ? { ownerUserId } : {}),
+      },
       orderBy: { createdAt: "desc" },
     })
 
@@ -79,78 +51,116 @@ export async function listCrmRecords(module: CrmModule) {
       module: record.module as CrmModule,
       title: record.title,
       status: record.status,
+      owner_user_id: record.ownerUserId,
       data: record.data as Record<string, unknown>,
       created_at: record.createdAt,
       updated_at: record.updatedAt,
     })) satisfies CrmRecord[]
   } catch (error) {
-    if (!isDatabaseFallbackError(error)) {
-      console.error(`Prisma ${module} list error`, error)
-    }
-    return fallbackData[module]
+    console.error(`Prisma ${module} list error`, error)
+    throw formatRepositoryError(`listar registros de ${module}`, error)
   }
 }
 
-export async function createCrmRecord(module: CrmModule, payload: Record<string, unknown>) {
+export async function createCrmRecord(module: CrmModule, payload: Record<string, unknown>, ownerUserId?: string) {
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
-  const data = await prisma.crmRecord.create({
-    data: { module, title, status, data: payload as Prisma.InputJsonValue },
-  })
+  try {
+    const data = await prisma.crmRecord.create({
+      data: {
+        module,
+        title,
+        status,
+        ownerUserId: ownerUserId ?? null,
+        data: payload as Prisma.InputJsonValue,
+      },
+    })
 
-  return {
-    id: data.id,
-    module: data.module as CrmModule,
-    title: data.title,
-    status: data.status,
-    data: data.data as Record<string, unknown>,
-    created_at: data.createdAt,
-    updated_at: data.updatedAt,
-  } satisfies CrmRecord
+    return {
+      id: data.id,
+      module: data.module as CrmModule,
+      title: data.title,
+      status: data.status,
+      owner_user_id: data.ownerUserId,
+      data: data.data as Record<string, unknown>,
+      created_at: data.createdAt,
+      updated_at: data.updatedAt,
+    } satisfies CrmRecord
+  } catch (error) {
+    console.error(`Prisma ${module} create error`, error)
+    throw formatRepositoryError(`criar registro de ${module}`, error)
+  }
 }
 
-export async function updateCrmRecord(module: CrmModule, id: string, payload: Record<string, unknown>) {
+export async function updateCrmRecord(module: CrmModule, id: string, payload: Record<string, unknown>, ownerUserId?: string) {
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
-  const data = await prisma.crmRecord.update({
-    where: { id },
-    data: { title, status, data: payload as Prisma.InputJsonValue },
-  })
+  try {
+    const record = await prisma.crmRecord.findUnique({
+      where: { id },
+      select: { module: true, ownerUserId: true },
+    })
+    if (!record || record.module !== module || (ownerUserId && record.ownerUserId !== ownerUserId)) {
+      throw new Error("Registro nao encontrado.")
+    }
 
-  return {
-    id: data.id,
-    module: data.module as CrmModule,
-    title: data.title,
-    status: data.status,
-    data: data.data as Record<string, unknown>,
-    created_at: data.createdAt,
-    updated_at: data.updatedAt,
-  } satisfies CrmRecord
+    const data = await prisma.crmRecord.update({
+      where: { id },
+      data: { title, status, data: payload as Prisma.InputJsonValue },
+    })
+
+    return {
+      id: data.id,
+      module: data.module as CrmModule,
+      title: data.title,
+      status: data.status,
+      owner_user_id: data.ownerUserId,
+      data: data.data as Record<string, unknown>,
+      created_at: data.createdAt,
+      updated_at: data.updatedAt,
+    } satisfies CrmRecord
+  } catch (error) {
+    console.error(`Prisma ${module} update error`, error)
+    throw formatRepositoryError(`atualizar registro de ${module}`, error)
+  }
 }
 
-export async function upsertCrmRecordById(module: CrmModule, id: string, payload: Record<string, unknown>) {
+export async function upsertCrmRecordById(module: CrmModule, id: string, payload: Record<string, unknown>, ownerUserId?: string) {
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
-  const data = await prisma.crmRecord.upsert({
-    where: { id },
-    create: { id, module, title, status, data: payload as Prisma.InputJsonValue },
-    update: { module, title, status, data: payload as Prisma.InputJsonValue },
-  })
+  try {
+    const data = await prisma.crmRecord.upsert({
+      where: { id },
+      create: {
+        id,
+        module,
+        title,
+        status,
+        ownerUserId: ownerUserId ?? null,
+        data: payload as Prisma.InputJsonValue,
+      },
+      update: { module, title, status, data: payload as Prisma.InputJsonValue },
+    })
 
-  return {
-    id: data.id,
-    module: data.module as CrmModule,
-    title: data.title,
-    status: data.status,
-    data: data.data as Record<string, unknown>,
-    created_at: data.createdAt,
-    updated_at: data.updatedAt,
-  } satisfies CrmRecord
+    return {
+      id: data.id,
+      module: data.module as CrmModule,
+      title: data.title,
+      status: data.status,
+      owner_user_id: data.ownerUserId,
+      data: data.data as Record<string, unknown>,
+      created_at: data.createdAt,
+      updated_at: data.updatedAt,
+    } satisfies CrmRecord
+  } catch (error) {
+    console.error(`Prisma ${module} upsert error`, error)
+    throw formatRepositoryError(`salvar registro de ${module}`, error)
+  }
 }
 
-export async function deleteCrmRecord(module: CrmModule, id: string) {
-  const record = await prisma.crmRecord.findUnique({ where: { id }, select: { module: true } })
-  if (!record || record.module !== module) throw new Error("Registro nao encontrado.")
+export async function deleteCrmRecord(module: CrmModule, id: string, ownerUserId?: string) {
+  const record = await prisma.crmRecord.findUnique({ where: { id }, select: { module: true, ownerUserId: true } })
+  if (!record || record.module !== module || (ownerUserId && record.ownerUserId !== ownerUserId)) throw new Error("Registro nao encontrado.")
   return prisma.crmRecord.delete({ where: { id } })
 }
 
@@ -161,10 +171,8 @@ export async function listAppUsers() {
       orderBy: { createdAt: "asc" },
     })
   } catch (error) {
-    if (!isDatabaseFallbackError(error)) {
-      console.error("Prisma users list error", error)
-    }
-    return teamMembers
+    console.error("Prisma users list error", error)
+    throw formatRepositoryError("listar usuarios", error)
   }
 }
 
@@ -173,7 +181,7 @@ export async function createAppUser(payload: {
   email: string
   phone?: string
   cargo?: string
-  role: "admin" | "funcionario"
+  role: UserRole
   status: "ativo" | "inativo"
 }) {
   const usernameBase = slugifyUsername(payload.email || payload.name)
@@ -201,7 +209,7 @@ export async function createAppUser(payload: {
 
 export async function updateAppUser(
   id: string,
-  payload: { name: string; email: string; phone?: string; role: "admin" | "funcionario"; status: "ativo" | "inativo" },
+  payload: { name: string; email: string; phone?: string; role: UserRole; status: "ativo" | "inativo" },
 ) {
   return prisma.appUser.update({
     where: { id },
@@ -218,4 +226,14 @@ export async function updateAppUser(
 
 export async function deleteAppUser(id: string) {
   return prisma.appUser.delete({ where: { id } })
+}
+
+export async function findDefaultCrmOwnerId() {
+  const user = await prisma.appUser.findFirst({
+    where: { status: "ativo" },
+    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+    select: { id: true },
+  })
+
+  return user?.id ?? null
 }

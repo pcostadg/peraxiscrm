@@ -1,5 +1,3 @@
-import "server-only"
-
 import { createHmac, timingSafeEqual } from "node:crypto"
 import bcrypt from "bcryptjs"
 import { cookies } from "next/headers"
@@ -9,16 +7,6 @@ import { prisma } from "@/lib/prisma"
 import type { SessionUser, UserRole } from "@/types/crm"
 
 const COOKIE_NAME = "peraxis_session"
-const ROOT_USERNAME = "root"
-const ROOT_PASSWORD = "roots2601"
-
-const rootUser: SessionUser = {
-  id: "root-admin",
-  name: "Administrador",
-  username: ROOT_USERNAME,
-  email: "root@peraxis.local",
-  role: "admin",
-}
 
 type SessionPayload = SessionUser & {
   iat: number
@@ -47,6 +35,16 @@ function createToken(user: SessionUser) {
   return `${payload}.${sign(payload)}`
 }
 
+function authCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 12,
+  }
+}
+
 function verifyToken(token?: string): SessionUser | null {
   if (!token) return null
   const [payload, signature] = token.split(".")
@@ -73,39 +71,20 @@ function verifyToken(token?: string): SessionUser | null {
 }
 
 export function getDefaultPanelRoute(role: UserRole) {
-  if (role === "tester") return ROUTES.TESTERS
   return ROUTES.DASHBOARD
 }
 
 export async function signInAdmin(username: string, password: string) {
-  const supabaseUser = await signInSupabaseUser(username, password)
-  if (supabaseUser) {
-    const token = createToken(supabaseUser)
-    const cookieStore = await cookies()
-    cookieStore.set(COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 12,
-    })
-    return supabaseUser
-  }
+  const appUser = await signInAppUser(username, password)
+  if (!appUser) return null
 
-  if (username !== ROOT_USERNAME || password !== ROOT_PASSWORD) return null
-  const token = createToken(rootUser)
+  const token = createToken(appUser)
   const cookieStore = await cookies()
-  cookieStore.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 12,
-  })
-  return rootUser
+  cookieStore.set(COOKIE_NAME, token, authCookieOptions())
+  return appUser
 }
 
-async function signInSupabaseUser(usernameOrEmail: string, password: string) {
+async function signInAppUser(usernameOrEmail: string, password: string) {
   const identifier = usernameOrEmail.trim()
   const data = await prisma.appUser.findFirst({
     where: {

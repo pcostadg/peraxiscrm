@@ -13,16 +13,24 @@ import { toast } from "sonner"
 const filters = ["todas", "nao lidas", "atribuidas", "chatbot", "manual"] as const
 const tagTones: ConversationTagTone[] = ["blue", "emerald", "amber", "rose", "violet", "slate"]
 const attachmentTypes = [
-  { label: "Imagem", icon: ImageIcon },
+  { label: "Imagem", icon: ImageIcon, kind: "imagem" as const },
   { label: "Audio", icon: Mic },
-  { label: "Video", icon: Video },
-  { label: "Documento", icon: File },
+  { label: "Video", icon: Video, kind: "video" as const },
+  { label: "Documento", icon: File, kind: "documento" as const },
 ]
 
 type ConversationFormState = {
   contactName: string
   phone: string
   assignedTo: string
+}
+
+type PendingAttachment = {
+  kind: "imagem" | "video" | "documento"
+  media: string
+  previewUrl?: string
+  mimeType?: string
+  fileName: string
 }
 
 const emptyConversationForm: ConversationFormState = {
@@ -89,7 +97,7 @@ function normalizeConversationTags(value: unknown): ConversationTag[] {
 function isPlaceholderName(name: string, phone: string) {
   const normalizedName = name.trim().toLowerCase()
   const normalizedPhone = phone.replace(/\D/g, "")
-  return !normalizedName || normalizedName === "contato z-api" || normalizedName === normalizedPhone || normalizedName === `+${normalizedPhone}`
+  return !normalizedName || normalizedName === "contato evolution" || normalizedName === normalizedPhone || normalizedName === `+${normalizedPhone}`
 }
 
 function resolveConversationName(data: Record<string, unknown>, record: CrmRecord) {
@@ -108,10 +116,22 @@ function resolveConversationName(data: Record<string, unknown>, record: CrmRecor
 
 function isAudioLikeMessage(message: Pick<ChatMessage, "kind" | "mediaUrl" | "mimeType">) {
   return (
-    message.kind === "audio" ||
+    normalizeMessageKind(message.kind, message.mimeType, message.mediaUrl) === "audio" ||
     Boolean(message.mimeType?.toLowerCase().startsWith("audio/")) ||
     Boolean(message.mediaUrl?.match(/\.(ogg|mp3|wav|m4a)(\?|$)/i))
   )
+}
+
+function isImageLikeMessage(message: Pick<ChatMessage, "kind" | "mediaUrl" | "mimeType">) {
+  return normalizeMessageKind(message.kind, message.mimeType, message.mediaUrl) === "imagem"
+}
+
+function isVideoLikeMessage(message: Pick<ChatMessage, "kind" | "mediaUrl" | "mimeType">) {
+  return normalizeMessageKind(message.kind, message.mimeType, message.mediaUrl) === "video"
+}
+
+function isDocumentLikeMessage(message: Pick<ChatMessage, "kind" | "mediaUrl" | "mimeType">) {
+  return normalizeMessageKind(message.kind, message.mimeType, message.mediaUrl) === "documento"
 }
 
 function createClientMessageId() {
@@ -130,7 +150,11 @@ function conversationFromRecord(record: CrmRecord): Conversation {
   const latestMessageIsAudio =
     latestMessage &&
     isAudioLikeMessage({
-      kind: (latestMessage.kind as ChatMessage["kind"]) ?? "texto",
+      kind: normalizeMessageKind(
+        latestMessage.kind as ChatMessage["kind"],
+        typeof latestMessage.mimeType === "string" ? latestMessage.mimeType : undefined,
+        typeof latestMessage.mediaUrl === "string" ? latestMessage.mediaUrl : undefined,
+      ),
       mediaUrl: typeof latestMessage.mediaUrl === "string" ? latestMessage.mediaUrl : undefined,
       mimeType: typeof latestMessage.mimeType === "string" ? latestMessage.mimeType : undefined,
     })
@@ -169,15 +193,21 @@ function messagesFromRecord(record: CrmRecord): ChatMessage[] {
   const items = Array.isArray(data.messages) ? data.messages : []
   return items.map((item, index) => {
     const message = item as Record<string, unknown>
+    const mimeType = typeof message.mimeType === "string" ? message.mimeType : undefined
+    const rawMediaUrl = typeof message.mediaUrl === "string" ? message.mediaUrl : undefined
+    const normalizedKind = normalizeMessageKind(message.kind as ChatMessage["kind"], mimeType, rawMediaUrl)
     return {
       id: String(message.id ?? `${record.id}-${index}`),
       conversationId: record.id,
       direction: (message.direction as ChatMessage["direction"]) ?? "entrada",
-      kind: (message.kind as ChatMessage["kind"]) ?? "texto",
+      kind: normalizedKind,
       content: String(message.content ?? ""),
-      mediaUrl: typeof message.mediaUrl === "string" ? message.mediaUrl : undefined,
-      mimeType: typeof message.mimeType === "string" ? message.mimeType : undefined,
+      mediaUrl: resolveChatMediaUrl(rawMediaUrl),
+      previewUrl: resolveChatMediaUrl(typeof message.previewUrl === "string" ? message.previewUrl : undefined),
+      mimeType,
       fileName: typeof message.fileName === "string" ? message.fileName : undefined,
+      zapiMessageId: typeof message.zapiMessageId === "string" ? message.zapiMessageId : undefined,
+      zapiZaapId: typeof message.zapiZaapId === "string" ? message.zapiZaapId : undefined,
       status: (message.status as ChatMessage["status"]) ?? "entregue",
       time: String(message.time ?? "agora"),
     }
@@ -207,6 +237,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [recordedAudioUrl, setRecordedAudioUrl] = useState("")
   const [recordedAudioData, setRecordedAudioData] = useState("")
   const [recordedAudioMimeType, setRecordedAudioMimeType] = useState("")
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -225,7 +256,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
         const nextMessages = records.flatMap(messagesFromRecord)
 
         setConversationItems(nextConversations)
-        setMessageItems(nextMessages)
+        setMessageItems((current) => mergeMessageSnapshots(nextMessages, current))
         setActiveId((current) => {
           if (current && nextConversations.some((item) => item.id === current)) return current
           return nextConversations[0]?.id ?? ""
@@ -274,7 +305,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const activePresenceLabel = getPresenceLabel(active?.presenceStatus)
   const canSendText = Boolean(draft.trim())
   const canSendAudio = Boolean(recordedAudioData)
-  const showMicrophoneAction = !canSendText && !canSendAudio
+  const canSendAttachment = Boolean(pendingAttachment)
+  const showMicrophoneAction = !canSendText && !canSendAudio && !canSendAttachment
   const availableTags = useMemo(
     () =>
       Array.from(
@@ -306,7 +338,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       unread: 0,
       assignedTo: newConversation.assignedTo.trim() || "Equipe",
       tags: [
-        { label: "z-api", tone: "emerald" },
+        { label: "evolution", tone: "emerald" },
         { label: "manual", tone: "blue" },
       ],
       lastMessage: "Conversa iniciada manualmente.",
@@ -389,6 +421,11 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
 
   function handleSendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (pendingAttachment) {
+      void submitPendingAttachment()
+      return
+    }
+
     if (recordedAudioData) {
       void submitRecordedAudio()
       return
@@ -475,6 +512,10 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     })
   }
 
+  function clearPendingAttachment() {
+    setPendingAttachment(null)
+  }
+
   async function submitRecordedAudio() {
     if (!active || !recordedAudioData || sending) return
 
@@ -522,6 +563,102 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     }
   }
 
+  async function handleAttachmentSelected(kind: "imagem" | "video" | "documento", file?: File | null) {
+    if (!file || sending) return
+
+    try {
+      const media = await fileToDataUrl(file)
+      const previewUrl = kind === "imagem" ? await createImagePreviewDataUrl(file) : undefined
+      setPendingAttachment({
+        kind,
+        media,
+        previewUrl,
+        mimeType: file.type || undefined,
+        fileName: file.name,
+      })
+      clearRecordedAudio()
+      toast.success(`${capitalizeMediaKind(kind)} pronto${kind === "imagem" ? "a" : ""} para envio.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao preparar o anexo.")
+    }
+  }
+
+  async function submitPendingAttachment() {
+    if (!active || !pendingAttachment || sending) return
+
+    const attachment = pendingAttachment
+    const caption = draft.trim()
+    const optimisticMessage: ChatMessage = {
+      id: createClientMessageId(),
+      conversationId: active.id,
+      direction: "saida",
+      kind: attachment.kind,
+      content: caption || defaultMediaContent(attachment.kind, attachment.fileName),
+      mediaUrl: attachment.media,
+      previewUrl: attachment.previewUrl,
+      mimeType: attachment.mimeType,
+      fileName: attachment.fileName,
+      status: "pendente",
+      time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    }
+
+    setMessageItems((current) => [...current, optimisticMessage])
+    setConversationItems((current) =>
+      current.map((item) =>
+        item.id === active.id
+          ? {
+              ...item,
+              lastMessage: optimisticMessage.content,
+              updatedAt: "agora",
+              unread: 0,
+            }
+          : item,
+      ),
+    )
+    setDraft("")
+    clearPendingAttachment()
+    setSending(true)
+
+    try {
+      const response = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: active.phone,
+          media: attachment.media,
+          kind: attachment.kind,
+          mimeType: attachment.mimeType,
+          fileName: attachment.fileName,
+          previewUrl: attachment.previewUrl,
+          message: caption || undefined,
+          conversationId: active.id,
+          contactName: active.contactName,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Nao foi possivel enviar o anexo.")
+      setMessageItems((current) =>
+        current.map((message) =>
+          message.id === optimisticMessage.id
+            ? { ...message, status: "enviado" }
+            : message,
+        ),
+      )
+      toast.success(`${capitalizeMediaKind(attachment.kind)} enviado${attachment.kind === "imagem" ? "a" : ""}.`)
+    } catch (error) {
+      setMessageItems((current) =>
+        current.map((message) =>
+          message.id === optimisticMessage.id
+            ? { ...message, status: "falha" }
+            : message,
+        ),
+      )
+      toast.error(error instanceof Error ? error.message : "Falha ao enviar anexo.")
+    } finally {
+      setSending(false)
+    }
+  }
+
   async function saveConversationTags(tags: ConversationTag[]) {
     if (!active) return
     setSavingTags(true)
@@ -557,8 +694,11 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               kind: message.kind,
               content: message.content,
               mediaUrl: message.mediaUrl,
+              previewUrl: message.previewUrl,
               mimeType: message.mimeType,
               fileName: message.fileName,
+              zapiMessageId: message.zapiMessageId,
+              zapiZaapId: message.zapiZaapId,
               status: message.status,
               time: message.time,
             })),
@@ -628,8 +768,11 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                   kind: message.kind,
                   content: message.content,
                   mediaUrl: message.mediaUrl,
+                  previewUrl: message.previewUrl,
                   mimeType: message.mimeType,
                   fileName: message.fileName,
+                  zapiMessageId: message.zapiMessageId,
+                  zapiZaapId: message.zapiZaapId,
                   status: message.status,
                   time: message.time,
                 })),
@@ -878,7 +1021,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 <div key={message.id} className={`flex ${message.direction === "saida" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[82%] rounded-3xl px-4 py-3 text-sm shadow-sm sm:max-w-[62%] ${message.direction === "saida" ? "bg-blue-600 text-white" : "border border-slate-200 bg-white text-slate-900"}`}>
                     <div>
-                      {message.kind !== "texto" && !isAudioLikeMessage(message) && (
+                      {message.kind !== "texto" && !isAudioLikeMessage(message) && !isImageLikeMessage(message) && !isVideoLikeMessage(message) && !isDocumentLikeMessage(message) && (
                         <strong className={`mr-2 uppercase ${message.direction === "saida" ? "text-blue-100" : "text-blue-600"}`}>
                           {message.kind}
                         </strong>
@@ -889,6 +1032,35 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                             Seu navegador nao suporta reproducao de audio.
                           </audio>
                           {message.content && !["audio", "mensagem"].includes(message.content.trim().toLowerCase()) ? <p className="mt-2">{message.content}</p> : null}
+                        </div>
+                      ) : isImageLikeMessage(message) && (message.mediaUrl || message.previewUrl) ? (
+                        <div className="mt-2 space-y-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={message.mediaUrl || message.previewUrl} alt={message.fileName || "Imagem enviada"} className="max-h-72 w-full rounded-2xl object-cover" />
+                          {message.content && message.content !== "Imagem" ? <p>{message.content}</p> : null}
+                        </div>
+                      ) : isVideoLikeMessage(message) && message.mediaUrl ? (
+                        <div className="mt-2 space-y-2">
+                          <video controls preload="metadata" className="max-h-80 w-full rounded-2xl" src={message.mediaUrl}>
+                            Seu navegador nao suporta reproducao de video.
+                          </video>
+                          {message.content && message.content !== "Video" ? <p>{message.content}</p> : null}
+                        </div>
+                      ) : isDocumentLikeMessage(message) && message.mediaUrl ? (
+                        <div className="mt-2 space-y-2">
+                          <a
+                            href={message.mediaUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            download={message.fileName || "documento"}
+                            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                              message.direction === "saida" ? "border-blue-300 bg-blue-500/20 text-white" : "border-slate-200 bg-slate-50 text-slate-700"
+                            }`}
+                          >
+                            <File size={16} />
+                            {message.fileName || "Abrir documento"}
+                          </a>
+                          {message.content && message.content !== "Documento" ? <p>{message.content}</p> : null}
                         </div>
                       ) : (
                         <p>{message.content}</p>
@@ -902,7 +1074,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               ))
             ) : (
               <div className="flex h-full min-h-[320px] items-center justify-center rounded-[28px] border border-dashed border-slate-200 bg-white/80 text-center text-sm text-slate-400">
-                Nenhuma mensagem ainda. Inicie um numero manualmente ou aguarde o backend da Z-API alimentar a conversa.
+                Nenhuma mensagem ainda. Inicie um numero manualmente ou aguarde o backend da Evolution API alimentar a conversa.
               </div>
             )}
           </div>
@@ -948,8 +1120,15 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                             ? "audio/*"
                             : item.label === "Video"
                               ? "video/*"
-                              : undefined
+                              : ".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
                       }
+                      onChange={(event) => {
+                        const file = event.target.files?.[0]
+                        if ("kind" in item && item.kind) {
+                          void handleAttachmentSelected(item.kind, file)
+                        }
+                        event.currentTarget.value = ""
+                      }}
                     />
                   </label>
                 )
@@ -975,6 +1154,36 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               </div>
             )}
 
+            {pendingAttachment && (
+              <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    {pendingAttachment.kind === "imagem" ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={pendingAttachment.previewUrl || pendingAttachment.media} alt={pendingAttachment.fileName} className="max-h-48 w-full rounded-2xl object-cover" />
+                    ) : pendingAttachment.kind === "video" ? (
+                      <video controls preload="metadata" className="max-h-56 w-full rounded-2xl" src={pendingAttachment.media} />
+                    ) : (
+                      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700">
+                        <File size={18} />
+                        <span className="truncate">{pendingAttachment.fileName}</span>
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs text-slate-500">
+                      {capitalizeMediaKind(pendingAttachment.kind)} selecionado. Digite uma descricao e clique em enviar.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearPendingAttachment}
+                    className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                  >
+                    Cancelar anexo
+                  </button>
+                </div>
+              </div>
+            )}
+
             <form className="flex items-end gap-3" onSubmit={handleSendMessage}>
               <button type="button" className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600" aria-label="Anexos">
                 <Paperclip size={20} />
@@ -989,6 +1198,11 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault()
+                    if (pendingAttachment) {
+                      void submitPendingAttachment()
+                      return
+                    }
+
                     if (recordedAudioData) {
                       void submitRecordedAudio()
                       return
@@ -1020,7 +1234,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                   className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Enviar mensagem"
                   type="submit"
-                  disabled={sending || recordingAudio || (!canSendText && !canSendAudio)}
+                  disabled={sending || recordingAudio || (!canSendText && !canSendAudio && !canSendAttachment)}
                 >
                   <Send size={19} />
                 </button>
@@ -1044,7 +1258,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             <div className="grid gap-5 px-8 py-8">
               <div className="inline-flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <Plus size={16} className="mt-0.5" />
-                <span>As credenciais reais da Z-API devem continuar fora do frontend. Esta tela esta pronta para conversar com o backend da instancia.</span>
+                <span>As credenciais reais da Evolution API devem continuar fora do frontend. Esta tela esta pronta para conversar com o backend da instancia.</span>
               </div>
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nome do contato</label>
@@ -1173,6 +1387,69 @@ function blobToDataUrl(blob: Blob) {
   })
 }
 
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+
+      reject(new Error("Nao foi possivel converter o arquivo para envio."))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler o arquivo selecionado."))
+    reader.readAsDataURL(file)
+  })
+}
+
+function createImagePreviewDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const image = new Image()
+    const objectUrl = URL.createObjectURL(file)
+
+    image.onload = () => {
+      const maxWidth = 960
+      const scale = image.width > maxWidth ? maxWidth / image.width : 1
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.max(1, Math.round(image.width * scale))
+      canvas.height = Math.max(1, Math.round(image.height * scale))
+
+      const context = canvas.getContext("2d")
+      if (!context) {
+        URL.revokeObjectURL(objectUrl)
+        reject(new Error("Nao foi possivel gerar a previa da imagem."))
+        return
+      }
+
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      const preview = canvas.toDataURL("image/jpeg", 0.78)
+      URL.revokeObjectURL(objectUrl)
+      resolve(preview)
+    }
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error("Falha ao preparar a previa da imagem."))
+    }
+
+    image.src = objectUrl
+  })
+}
+
+function defaultMediaContent(kind: "imagem" | "video" | "documento", fileName?: string) {
+  if (kind === "documento" && fileName) return fileName
+  if (kind === "imagem") return "Imagem"
+  if (kind === "video") return "Video"
+  return "Documento"
+}
+
+function capitalizeMediaKind(kind: "imagem" | "video" | "documento") {
+  if (kind === "imagem") return "Imagem"
+  if (kind === "video") return "Video"
+  return "Documento"
+}
+
 function getPresenceLabel(status?: Conversation["presenceStatus"]) {
   switch (status) {
     case "available":
@@ -1184,4 +1461,52 @@ function getPresenceLabel(status?: Conversation["presenceStatus"]) {
     default:
       return ""
   }
+}
+
+function normalizeMessageKind(kind: unknown, mimeType?: string, mediaUrl?: string): ChatMessage["kind"] {
+  const normalizedKind = String(kind ?? "")
+    .trim()
+    .toLowerCase()
+
+  if (normalizedKind === "audio" || normalizedKind === "ptt" || normalizedKind === "voice") return "audio"
+  if (normalizedKind === "imagem" || normalizedKind === "image" || normalizedKind === "foto") return "imagem"
+  if (normalizedKind === "video" || normalizedKind === "vídeo") return "video"
+  if (normalizedKind === "documento" || normalizedKind === "document" || normalizedKind === "file" || normalizedKind === "arquivo") return "documento"
+  if (normalizedKind === "texto" || normalizedKind === "text" || normalizedKind === "message") return "texto"
+
+  const normalizedMimeType = String(mimeType ?? "").trim().toLowerCase()
+  if (normalizedMimeType.startsWith("audio/")) return "audio"
+  if (normalizedMimeType.startsWith("image/")) return "imagem"
+  if (normalizedMimeType.startsWith("video/")) return "video"
+  if (normalizedMimeType) return "documento"
+
+  const normalizedMediaUrl = String(mediaUrl ?? "").trim().toLowerCase()
+  if (normalizedMediaUrl.match(/\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i)) return "imagem"
+  if (normalizedMediaUrl.match(/\.(mp4|mov|webm|mkv)(\?|$)/i)) return "video"
+  if (normalizedMediaUrl.match(/\.(ogg|mp3|wav|m4a)(\?|$)/i)) return "audio"
+  if (normalizedMediaUrl) return "documento"
+
+  return "texto"
+}
+
+function resolveChatMediaUrl(mediaUrl?: string) {
+  if (!mediaUrl) return undefined
+  if (mediaUrl.startsWith("data:") || mediaUrl.startsWith("blob:")) return mediaUrl
+  if (/^https?:\/\//i.test(mediaUrl)) {
+    return `/api/whatsapp/media?url=${encodeURIComponent(mediaUrl)}`
+  }
+
+  return mediaUrl
+}
+
+function mergeMessageSnapshots(serverMessages: ChatMessage[], currentMessages: ChatMessage[]) {
+  const serverIds = new Set(serverMessages.map((message) => message.id))
+  const localMessagesToKeep = currentMessages.filter((message) => {
+    if (serverIds.has(message.id)) return false
+    if (message.direction !== "saida") return false
+    if (message.status === "falha" || message.status === "pendente") return true
+    return Boolean(message.mediaUrl?.startsWith("data:") || message.mediaUrl?.startsWith("blob:"))
+  })
+
+  return [...serverMessages, ...localMessagesToKeep]
 }
