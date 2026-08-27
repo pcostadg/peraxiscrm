@@ -21,120 +21,128 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = await request.text()
-  if (!isValidEvolutionWebhook(request, body)) {
-    return new Response("Invalid webhook token", { status: 401 })
-  }
-
-  let payload: Record<string, unknown>
   try {
-    payload = JSON.parse(body) as Record<string, unknown>
-  } catch {
-    return new Response("Invalid JSON", { status: 400 })
-  }
-
-  const parsed = parseEvolutionWebhookPayload(payload)
-  const supabase = createBackendSupabaseClient()
-  if (supabase) {
-    await supabase.from("webhook_events").insert({ provider: "evolution", event_type: String(payload.event ?? "whatsapp"), payload })
-  }
-
-  if (!parsed.phone) {
-    return NextResponse.json({ received: true, ignored: true })
-  }
-
-  if (parsed.event === "message" && parsed.kind === "texto" && !parsed.message.trim() && !parsed.mediaUrl) {
-    return NextResponse.json({ received: true, ignored: true, reason: "empty-message" })
-  }
-
-  const records = await listCrmRecords("conversas")
-  const existingConversation = Array.isArray(records)
-    ? (records as CrmRecord[]).find((record) => {
-        const phone = String(record.data.phone ?? "")
-        return phone.replace(/\D/g, "") === parsed.phone
-      })
-    : null
-
-  const previousData = existingConversation?.data as Record<string, unknown> | undefined
-  const conversationId = existingConversation?.id || `conversation-${parsed.phone}`
-  const ownerUserId = existingConversation?.owner_user_id ?? await findDefaultCrmOwnerId()
-
-  if (isEvolutionStatusWebhook(payload)) {
-    if (!existingConversation) {
-      return NextResponse.json({ received: true, ignored: true, reason: "conversation-not-found" })
+    const body = await request.text()
+    if (!isValidEvolutionWebhook(request, body)) {
+      return new Response("Invalid webhook token", { status: 401 })
     }
 
+    let payload: Record<string, unknown>
+    try {
+      payload = JSON.parse(body) as Record<string, unknown>
+    } catch {
+      return new Response("Invalid JSON", { status: 400 })
+    }
+
+    const parsed = parseEvolutionWebhookPayload(payload)
+    const supabase = createBackendSupabaseClient()
+    if (supabase) {
+      await supabase.from("webhook_events").insert({ provider: "evolution", event_type: String(payload.event ?? "whatsapp"), payload })
+    }
+
+    if (!parsed.phone) {
+      return NextResponse.json({ received: true, ignored: true })
+    }
+
+    if (parsed.event === "message" && parsed.kind === "texto" && !parsed.message.trim() && !parsed.mediaUrl) {
+      return NextResponse.json({ received: true, ignored: true, reason: "empty-message" })
+    }
+
+    const records = await listCrmRecords("conversas")
+    const existingConversation = Array.isArray(records)
+      ? (records as CrmRecord[]).find((record) => {
+          const phone = String(record.data.phone ?? "")
+          return phone.replace(/\D/g, "") === parsed.phone
+        })
+      : null
+
+    const previousData = existingConversation?.data as Record<string, unknown> | undefined
+    const conversationId = existingConversation?.id || `conversation-${parsed.phone}`
+    const ownerUserId = existingConversation?.owner_user_id ?? await findDefaultCrmOwnerId()
+
+    if (isEvolutionStatusWebhook(payload)) {
+      if (!existingConversation) {
+        return NextResponse.json({ received: true, ignored: true, reason: "conversation-not-found" })
+      }
+
+      const previousMessages = Array.isArray(previousData?.messages) ? previousData.messages : []
+      const nextMessages = applyEvolutionStatusUpdates(previousMessages, payload)
+
+      await upsertCrmRecordById("conversas", conversationId, {
+        contactName: resolveStoredContactName(previousData, parsed.contactName, parsed.phone),
+        phone: parsed.phone,
+        source: String(previousData?.source ?? "manual"),
+        unread: Number(previousData?.unread ?? 0),
+        assignedTo: String(previousData?.assignedTo ?? "Equipe"),
+        tags: Array.isArray(previousData?.tags) ? previousData.tags : ["evolution"],
+        lastMessage: String(previousData?.lastMessage ?? "Conversa iniciada."),
+        updatedAt: "agora",
+        messages: nextMessages,
+        presenceStatus: previousData?.presenceStatus,
+        status: "aberta",
+        rawLastWebhook: payload,
+      }, ownerUserId ?? undefined)
+
+      return NextResponse.json({ received: true, event: "messages.update" })
+    }
+
+    if (parsed.event === "presence") {
+      await upsertCrmRecordById("conversas", conversationId, {
+        contactName: resolveStoredContactName(previousData, parsed.contactName, parsed.phone),
+        phone: parsed.phone,
+        source: String(previousData?.source ?? "manual"),
+        unread: Number(previousData?.unread ?? 0),
+        assignedTo: String(previousData?.assignedTo ?? "Equipe"),
+        tags: Array.isArray(previousData?.tags) ? previousData.tags : ["evolution"],
+        lastMessage: String(previousData?.lastMessage ?? "Conversa iniciada."),
+        updatedAt: "agora",
+        messages: Array.isArray(previousData?.messages) ? previousData.messages : [],
+        presenceStatus: parsed.presenceStatus,
+        status: "aberta",
+        rawLastWebhook: parsed.raw,
+      }, ownerUserId ?? undefined)
+
+      return NextResponse.json({ received: true, event: "presence" })
+    }
+
+    const messagePreview = getMessagePreview(parsed)
     const previousMessages = Array.isArray(previousData?.messages) ? previousData.messages : []
-    const nextMessages = applyEvolutionStatusUpdates(previousMessages, payload)
+    const nextMessage = {
+      id: parsed.messageId,
+      direction: parsed.direction,
+      kind: parsed.kind,
+      content: messagePreview,
+      mediaUrl: parsed.mediaUrl,
+      mimeType: parsed.mimeType,
+      fileName: parsed.fileName,
+      zapiMessageId: parsed.messageId,
+      status: parsed.direction === "saida" ? "enviado" : "entregue",
+      time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    }
 
     await upsertCrmRecordById("conversas", conversationId, {
       contactName: resolveStoredContactName(previousData, parsed.contactName, parsed.phone),
       phone: parsed.phone,
       source: String(previousData?.source ?? "manual"),
-      unread: Number(previousData?.unread ?? 0),
+      unread: parsed.direction === "entrada" ? Number(previousData?.unread ?? 0) + 1 : Number(previousData?.unread ?? 0),
       assignedTo: String(previousData?.assignedTo ?? "Equipe"),
       tags: Array.isArray(previousData?.tags) ? previousData.tags : ["evolution"],
-      lastMessage: String(previousData?.lastMessage ?? "Conversa iniciada."),
+      lastMessage: messagePreview,
       updatedAt: "agora",
-      messages: nextMessages,
-      presenceStatus: previousData?.presenceStatus,
-      status: "aberta",
-      rawLastWebhook: payload,
-    }, ownerUserId ?? undefined)
-
-    return NextResponse.json({ received: true, event: "messages.update" })
-  }
-
-  if (parsed.event === "presence") {
-    await upsertCrmRecordById("conversas", conversationId, {
-      contactName: resolveStoredContactName(previousData, parsed.contactName, parsed.phone),
-      phone: parsed.phone,
-      source: String(previousData?.source ?? "manual"),
-      unread: Number(previousData?.unread ?? 0),
-      assignedTo: String(previousData?.assignedTo ?? "Equipe"),
-      tags: Array.isArray(previousData?.tags) ? previousData.tags : ["evolution"],
-      lastMessage: String(previousData?.lastMessage ?? "Conversa iniciada."),
-      updatedAt: "agora",
-      messages: Array.isArray(previousData?.messages) ? previousData.messages : [],
-      presenceStatus: parsed.presenceStatus,
+      messages: appendOrMergeMessage(previousMessages, nextMessage),
+      presenceStatus: parsed.direction === "entrada" ? "paused" : previousData?.presenceStatus,
       status: "aberta",
       rawLastWebhook: parsed.raw,
     }, ownerUserId ?? undefined)
 
-    return NextResponse.json({ received: true, event: "presence" })
+    return NextResponse.json({ received: true })
+  } catch (error) {
+    console.error("Evolution webhook error", error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Falha ao processar webhook da Evolution." },
+      { status: 500 },
+    )
   }
-
-  const messagePreview = getMessagePreview(parsed)
-  const previousMessages = Array.isArray(previousData?.messages) ? previousData.messages : []
-  const nextMessage = {
-    id: parsed.messageId,
-    direction: parsed.direction,
-    kind: parsed.kind,
-    content: messagePreview,
-    mediaUrl: parsed.mediaUrl,
-    mimeType: parsed.mimeType,
-    fileName: parsed.fileName,
-    zapiMessageId: parsed.messageId,
-    status: parsed.direction === "saida" ? "enviado" : "entregue",
-    time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-  }
-
-  await upsertCrmRecordById("conversas", conversationId, {
-    contactName: resolveStoredContactName(previousData, parsed.contactName, parsed.phone),
-    phone: parsed.phone,
-    source: String(previousData?.source ?? "manual"),
-    unread: parsed.direction === "entrada" ? Number(previousData?.unread ?? 0) + 1 : Number(previousData?.unread ?? 0),
-    assignedTo: String(previousData?.assignedTo ?? "Equipe"),
-    tags: Array.isArray(previousData?.tags) ? previousData.tags : ["evolution"],
-    lastMessage: messagePreview,
-    updatedAt: "agora",
-    messages: appendOrMergeMessage(previousMessages, nextMessage),
-    presenceStatus: parsed.direction === "entrada" ? "paused" : previousData?.presenceStatus,
-    status: "aberta",
-    rawLastWebhook: parsed.raw,
-  }, ownerUserId ?? undefined)
-
-  return NextResponse.json({ received: true })
 }
 
 function getMessagePreview(parsed: ReturnType<typeof parseEvolutionWebhookPayload>) {
