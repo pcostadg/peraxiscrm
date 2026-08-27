@@ -178,10 +178,22 @@ export async function deleteCrmRecord(module: CrmModule, id: string, ownerUserId
 
 export async function listAppUsers(): Promise<AppUserListRecord[]> {
   try {
-    return await prisma.appUser.findMany({
+    const records = await prisma.appUser.findMany({
       select: { id: true, name: true, username: true, email: true, phone: true, role: true, status: true, createdAt: true, updatedAt: true },
       orderBy: { createdAt: "asc" },
     })
+
+    return records.map((record) => ({
+      id: record.id,
+      name: record.name,
+      username: record.username,
+      email: record.email,
+      phone: record.phone,
+      role: record.role as UserRole,
+      status: record.status as AppUserListRecord["status"],
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    }))
   } catch (error) {
     console.error("Prisma users list error", error)
     throw formatRepositoryError("listar usuarios", error)
