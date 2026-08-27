@@ -127,43 +127,58 @@ export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
 export async function sendEvolutionAudioMessage(input: SendEvolutionAudioInput) {
   const config = getEvolutionConfig()
   const normalizedAudio = normalizeOwnedMedia(input.audio)
-  const response = await fetch(config.sendAudioUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: config.apiKey,
+  const primaryPayload = {
+    number: normalizePhone(input.to),
+    options: {
+      delay: input.delayTyping ?? 1200,
+      presence: "recording",
+      encoding: true,
     },
-    body: JSON.stringify({
-      number: normalizePhone(input.to),
-      options: {
-        delay: input.delayTyping ?? 1200,
-        presence: "recording",
-        encoding: true,
-      },
-      audioMessage: {
-        audio: normalizedAudio,
-      },
-    }),
-    cache: "no-store",
-  })
-
-  const result = await parseApiResponse(response)
-  if (!response.ok) {
-    throw new Error(typeof result === "object" && result ? JSON.stringify(result) : "A Evolution API recusou o envio do audio.")
+    audio: normalizedAudio,
   }
 
-  return result
+  const primary = await postEvolutionJson(config.sendAudioUrl, config.apiKey, primaryPayload)
+  if (primary.ok) return primary.result
+
+  const fallbackPayload = {
+    number: normalizePhone(input.to),
+    options: {
+      delay: input.delayTyping ?? 1200,
+      presence: "recording",
+      encoding: true,
+    },
+    audioMessage: {
+      audio: normalizedAudio,
+    },
+  }
+  const fallback = await postEvolutionJson(config.sendAudioUrl, config.apiKey, fallbackPayload)
+  if (fallback.ok) return fallback.result
+
+  throw new Error(formatEvolutionError(fallback.result ?? primary.result, "A Evolution API recusou o envio do audio."))
 }
 
 export async function sendEvolutionMediaMessage(input: SendEvolutionMediaInput) {
   const config = getEvolutionConfig()
+  const normalizedMedia = normalizeOwnedMedia(input.media)
+  const mediaFileName = resolveUploadFileName(input)
+
+  const primaryPayload = {
+    number: normalizePhone(input.to),
+    mediatype: input.kind === "imagem" ? "image" : input.kind === "video" ? "video" : "document",
+    media: normalizedMedia,
+    fileName: mediaFileName,
+    caption: input.caption?.trim() || undefined,
+    mimetype: input.mimeType?.trim() || undefined,
+  }
+
+  const primary = await postEvolutionJson(config.sendMediaUrl, config.apiKey, primaryPayload)
+  if (primary.ok) return primary.result
+
   const form = new FormData()
   form.set("number", normalizePhone(input.to))
   if (input.caption?.trim()) form.set("caption", input.caption.trim())
-  if (input.fileName?.trim()) form.set("fileName", input.fileName.trim())
+  if (mediaFileName) form.set("fileName", mediaFileName)
 
-  const normalizedMedia = normalizeOwnedMedia(input.media)
-  const mediaFileName = resolveUploadFileName(input)
   const mediaValue = createOwnedMediaFormValue(normalizedMedia, input.mimeType, mediaFileName)
   if (mediaValue.kind === "url") {
     form.set("media", mediaValue.value)
@@ -171,21 +186,37 @@ export async function sendEvolutionMediaMessage(input: SendEvolutionMediaInput) 
     form.set("media", mediaValue.value, mediaValue.fileName)
   }
 
-  const response = await fetch(config.sendMediaUrl, {
+  const fallback = await postEvolutionForm(config.sendMediaUrl, config.apiKey, form)
+  if (fallback.ok) return fallback.result
+
+  throw new Error(formatEvolutionError(fallback.result ?? primary.result, `A Evolution API recusou o envio de ${input.kind}.`))
+}
+
+async function postEvolutionJson(url: string, apiKey: string, payload: Record<string, unknown>) {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
-      apikey: config.apiKey,
+      "Content-Type": "application/json",
+      apikey: apiKey,
     },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  })
+
+  const result = await parseApiResponse(response)
+  return { ok: response.ok, result }
+}
+
+async function postEvolutionForm(url: string, apiKey: string, form: FormData) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { apikey: apiKey },
     body: form,
     cache: "no-store",
   })
 
   const result = await parseApiResponse(response)
-  if (!response.ok) {
-    throw new Error(typeof result === "object" && result ? JSON.stringify(result) : `A Evolution API recusou o envio de ${input.kind}.`)
-  }
-
-  return result
+  return { ok: response.ok, result }
 }
 
 function normalizeOwnedMedia(value: string) {
@@ -211,6 +242,11 @@ function resolveUploadFileName(input: SendEvolutionMediaInput) {
   if (input.kind === "imagem") return "imagem"
   if (input.kind === "video") return "video"
   return "documento"
+}
+
+function formatEvolutionError(result: unknown, fallbackMessage: string) {
+  if (typeof result === "object" && result) return JSON.stringify(result)
+  return fallbackMessage
 }
 
 export function isValidEvolutionWebhook(request: Request, body: string) {
