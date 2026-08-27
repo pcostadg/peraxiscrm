@@ -127,31 +127,30 @@ export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
 export async function sendEvolutionAudioMessage(input: SendEvolutionAudioInput) {
   const config = getEvolutionConfig()
   const normalizedAudio = normalizeOwnedMedia(input.audio)
+  const fileName = "gravacao.webm"
   const primaryPayload = {
     number: normalizePhone(input.to),
-    options: {
-      delay: input.delayTyping ?? 1200,
-      presence: "recording",
-      encoding: true,
-    },
-    audio: normalizedAudio,
+    mediatype: "audio",
+    media: normalizedAudio,
+    fileName,
+    mimetype: "audio/webm",
   }
 
-  const primary = await postEvolutionJson(config.sendAudioUrl, config.apiKey, primaryPayload)
+  const primary = await postEvolutionJson(config.sendMediaUrl, config.apiKey, primaryPayload)
   if (primary.ok) return primary.result
 
-  const fallbackPayload = {
-    number: normalizePhone(input.to),
-    options: {
-      delay: input.delayTyping ?? 1200,
-      presence: "recording",
-      encoding: true,
-    },
-    audioMessage: {
-      audio: normalizedAudio,
-    },
+  const form = new FormData()
+  form.set("number", normalizePhone(input.to))
+  form.set("mediatype", "audio")
+  form.set("fileName", fileName)
+  const mediaValue = createOwnedMediaFormValue(normalizedAudio, "audio/webm", fileName)
+  if (mediaValue.kind === "url") {
+    form.set("media", mediaValue.value)
+  } else {
+    form.set("media", mediaValue.value, mediaValue.fileName)
   }
-  const fallback = await postEvolutionJson(config.sendAudioUrl, config.apiKey, fallbackPayload)
+
+  const fallback = await postEvolutionForm(config.sendMediaUrl, config.apiKey, form)
   if (fallback.ok) return fallback.result
 
   throw new Error(formatEvolutionError(fallback.result ?? primary.result, "A Evolution API recusou o envio do audio."))
