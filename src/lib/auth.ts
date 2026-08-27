@@ -13,6 +13,10 @@ type SessionPayload = SessionUser & {
   exp: number
 }
 
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
 function getSecret() {
   return process.env.AUTH_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "peraxis-local-dev-secret"
 }
@@ -58,6 +62,7 @@ function verifyToken(token?: string): SessionUser | null {
   try {
     const parsed = JSON.parse(fromBase64Url(payload)) as SessionPayload
     if (!parsed.exp || parsed.exp < Math.floor(Date.now() / 1000)) return null
+    if (!isUuid(parsed.id)) return null
     return {
       id: parsed.id,
       name: parsed.name,

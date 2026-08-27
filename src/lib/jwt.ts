@@ -1,5 +1,3 @@
-import "server-only"
-
 import { createHmac, timingSafeEqual } from "node:crypto"
 import type { SessionUser } from "@/types/crm"
 
@@ -7,6 +5,10 @@ export type JwtPayload = SessionUser & {
   type: "access" | "refresh"
   iat: number
   exp: number
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
 function secret() {
@@ -49,6 +51,7 @@ export function verifyJwt(token?: string, expectedType?: "access" | "refresh") {
     const parsed = decode<JwtPayload>(payload)
     if (parsed.exp < Math.floor(Date.now() / 1000)) return null
     if (expectedType && parsed.type !== expectedType) return null
+    if (!isUuid(parsed.id)) return null
     return parsed
   } catch {
     return null
