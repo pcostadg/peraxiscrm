@@ -49,6 +49,14 @@ function formatRepositoryError(action: string, error: unknown) {
   return new Error(`Falha ao ${action}.`)
 }
 
+function normalizeOwnerUserId(value?: string | null) {
+  if (!value) return null
+  const normalized = value.trim()
+  if (!normalized) return null
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  return uuidPattern.test(normalized) ? normalized : null
+}
+
 type JsonCompatibleValue =
   | string
   | number
@@ -108,6 +116,7 @@ export async function createCrmRecord(module: CrmModule, payload: Record<string,
   const status = typeof payload.status === "string" ? payload.status : null
   const id = typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : randomUUID()
   const normalizedPayload = sanitizeJsonValue(payload) as Prisma.InputJsonValue
+  const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId)
   try {
     const data = await prisma.crmRecord.create({
       data: {
@@ -115,7 +124,7 @@ export async function createCrmRecord(module: CrmModule, payload: Record<string,
         module,
         title,
         status,
-        ownerUserId: ownerUserId ?? null,
+        ownerUserId: normalizedOwnerUserId,
         data: normalizedPayload,
       },
     })
@@ -174,6 +183,7 @@ export async function upsertCrmRecordById(module: CrmModule, id: string, payload
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
   const normalizedPayload = sanitizeJsonValue(payload) as Prisma.InputJsonValue
+  const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId)
   try {
     const data = await prisma.crmRecord.upsert({
       where: { id },
@@ -182,7 +192,7 @@ export async function upsertCrmRecordById(module: CrmModule, id: string, payload
         module,
         title,
         status,
-        ownerUserId: ownerUserId ?? null,
+        ownerUserId: normalizedOwnerUserId,
         data: normalizedPayload,
       },
       update: { module, title, status, data: normalizedPayload },
@@ -294,5 +304,5 @@ export async function findDefaultCrmOwnerId() {
     select: { id: true },
   })
 
-  return user?.id ?? null
+  return normalizeOwnerUserId(user?.id) ?? null
 }
