@@ -259,8 +259,12 @@ function formatEvolutionError(result: unknown, fallbackMessage: string) {
 }
 
 export function isValidEvolutionWebhook(request: Request, body: string) {
-  const expected = process.env.EVOLUTION_WEBHOOK_SECRET?.trim() || process.env.EVOLUTION_API_KEY?.trim()
-  if (!expected) return true
+  const expectedTokens = [
+    process.env.EVOLUTION_WEBHOOK_SECRET?.trim(),
+    process.env.EVOLUTION_API_KEY?.trim(),
+    process.env.EVOLUTION_INSTANCE_TOKEN?.trim(),
+  ].filter((value): value is string => Boolean(value))
+  if (!expectedTokens.length) return true
 
   const authHeader = request.headers.get("authorization")
   const authToken = authHeader?.replace(/^Bearer\s+/i, "").trim()
@@ -282,7 +286,7 @@ export function isValidEvolutionWebhook(request: Request, body: string) {
   ].filter((value): value is string => Boolean(value?.trim()))
 
   if (!candidates.length) return body.length > 0
-  return candidates.includes(expected)
+  return candidates.some((candidate) => expectedTokens.includes(candidate))
 }
 
 export function parseEvolutionWebhookPayload(payload: Record<string, unknown>) {
