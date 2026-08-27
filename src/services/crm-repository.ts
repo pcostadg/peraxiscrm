@@ -49,7 +49,15 @@ function formatRepositoryError(action: string, error: unknown) {
   return new Error(`Falha ao ${action}.`)
 }
 
-function sanitizeJsonValue(value: unknown): Prisma.InputJsonValue {
+type JsonCompatibleValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonCompatibleValue[]
+  | { [key: string]: JsonCompatibleValue }
+
+function sanitizeJsonValue(value: unknown): JsonCompatibleValue {
   if (value === null) return null
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value
   if (value instanceof Date) return value.toISOString()
@@ -99,7 +107,7 @@ export async function createCrmRecord(module: CrmModule, payload: Record<string,
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
   const id = typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : randomUUID()
-  const normalizedPayload = sanitizeJsonValue(payload)
+  const normalizedPayload = sanitizeJsonValue(payload) as Prisma.InputJsonValue
   try {
     const data = await prisma.crmRecord.create({
       data: {
@@ -131,7 +139,7 @@ export async function createCrmRecord(module: CrmModule, payload: Record<string,
 export async function updateCrmRecord(module: CrmModule, id: string, payload: Record<string, unknown>, ownerUserId?: string) {
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
-  const normalizedPayload = sanitizeJsonValue(payload)
+  const normalizedPayload = sanitizeJsonValue(payload) as Prisma.InputJsonValue
   try {
     const record = await prisma.crmRecord.findUnique({
       where: { id },
@@ -165,7 +173,7 @@ export async function updateCrmRecord(module: CrmModule, id: string, payload: Re
 export async function upsertCrmRecordById(module: CrmModule, id: string, payload: Record<string, unknown>, ownerUserId?: string) {
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
-  const normalizedPayload = sanitizeJsonValue(payload)
+  const normalizedPayload = sanitizeJsonValue(payload) as Prisma.InputJsonValue
   try {
     const data = await prisma.crmRecord.upsert({
       where: { id },
