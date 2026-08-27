@@ -71,7 +71,7 @@ function sanitizeJsonValue(value: unknown): JsonCompatibleValue {
       typeof item === "undefined" ? [] : [[key, sanitizeJsonValue(item)] as const]
     ))
 
-    return Object.fromEntries(entries) as Prisma.InputJsonObject
+    return Object.fromEntries(entries)
   }
 
   return String(value)
