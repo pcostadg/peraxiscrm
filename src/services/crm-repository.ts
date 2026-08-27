@@ -18,6 +18,18 @@ export type CrmRecord = {
   updated_at: string | Date
 }
 
+export type AppUserListRecord = {
+  id: string
+  name: string
+  username: string
+  email: string
+  phone: string | null
+  role: UserRole
+  status: "ativo" | "inativo"
+  createdAt: Date
+  updatedAt: Date
+}
+
 function slugifyUsername(value: string) {
   const base = value
     .normalize("NFD")
@@ -164,7 +176,7 @@ export async function deleteCrmRecord(module: CrmModule, id: string, ownerUserId
   return prisma.crmRecord.delete({ where: { id } })
 }
 
-export async function listAppUsers() {
+export async function listAppUsers(): Promise<AppUserListRecord[]> {
   try {
     return await prisma.appUser.findMany({
       select: { id: true, name: true, username: true, email: true, phone: true, role: true, status: true, createdAt: true, updatedAt: true },

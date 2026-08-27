@@ -120,7 +120,7 @@ export async function getCurrentUser() {
   return verifyToken(cookieStore.get(COOKIE_NAME)?.value)
 }
 
-export async function requireAuth(role?: UserRole) {
+export async function requireAuth(role?: UserRole): Promise<SessionUser> {
   const user = await getCurrentUser()
   if (!user) redirect(ROUTES.LOGIN)
   if (role && user.role !== role) redirect(getDefaultPanelRoute(user.role))

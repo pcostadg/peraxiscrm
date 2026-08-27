@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { bearerToken, verifyJwt } from "@/lib/jwt"
+import type { SessionUser } from "@/types/crm"
 
-export async function requireApiUser(request?: Request) {
+export async function requireApiUser(request?: Request): Promise<
+  | { user: SessionUser; response: null }
+  | { user: never; response: NextResponse }
+> {
   const tokenUser = request ? verifyJwt(bearerToken(request.headers.get("authorization")), "access") : null
   const user = tokenUser ?? await getCurrentUser()
-  if (!user) return { user: null, response: NextResponse.json({ error: "Nao autenticado." }, { status: 401 }) }
+  if (!user) return { user: undefined as never, response: NextResponse.json({ error: "Nao autenticado." }, { status: 401 }) }
   return { user, response: null }
 }
 
