@@ -1,5 +1,6 @@
 import "server-only"
 
+import { randomUUID } from "node:crypto"
 import type { Prisma } from "@prisma/client"
 import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/prisma"
@@ -77,9 +78,11 @@ export async function listCrmRecords(module: CrmModule, ownerUserId?: string) {
 export async function createCrmRecord(module: CrmModule, payload: Record<string, unknown>, ownerUserId?: string) {
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
+  const id = typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : randomUUID()
   try {
     const data = await prisma.crmRecord.create({
       data: {
+        id,
         module,
         title,
         status,
@@ -219,6 +222,7 @@ export async function createAppUser(payload: {
   const passwordHash = await bcrypt.hash(process.env.DEFAULT_TEAM_USER_PASSWORD || "123456", 10)
   return prisma.appUser.create({
     data: {
+      id: randomUUID(),
       name: payload.name,
       username,
       email: payload.email,
