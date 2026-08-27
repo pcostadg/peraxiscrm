@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createBackendSupabaseClient } from "@/lib/supabase"
-import { findDefaultCrmOwnerId, listCrmRecords, type CrmRecord, upsertCrmRecordById } from "@/services/crm-repository"
+import { createCrmRecord, findDefaultCrmOwnerId, listCrmRecords, type CrmRecord, upsertCrmRecordById } from "@/services/crm-repository"
 import { extractEvolutionStatusUpdates, isEvolutionStatusWebhook, isValidEvolutionWebhook, parseEvolutionWebhookPayload } from "@/services/evolution"
 
 function isPlaceholderName(value: unknown, phone: string) {
@@ -57,11 +57,11 @@ export async function POST(request: Request) {
       : null
 
     const previousData = existingConversation?.data as Record<string, unknown> | undefined
-    const conversationId = existingConversation?.id || `conversation-${parsed.phone}`
+    const conversationId = existingConversation?.id
     const ownerUserId = existingConversation?.owner_user_id ?? await findDefaultCrmOwnerId()
 
     if (isEvolutionStatusWebhook(payload)) {
-      if (!existingConversation) {
+      if (!existingConversation || !conversationId) {
         return NextResponse.json({ received: true, ignored: true, reason: "conversation-not-found" })
       }
 
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     }
 
     if (parsed.event === "presence") {
-      await upsertCrmRecordById("conversas", conversationId, {
+      const conversationPayload = {
         contactName: resolveStoredContactName(previousData, parsed.contactName, parsed.phone),
         phone: parsed.phone,
         source: String(previousData?.source ?? "manual"),
@@ -100,7 +100,16 @@ export async function POST(request: Request) {
         presenceStatus: parsed.presenceStatus,
         status: "aberta",
         rawLastWebhook: parsed.raw,
-      }, ownerUserId ?? undefined)
+      }
+
+      if (existingConversation && conversationId) {
+        await upsertCrmRecordById("conversas", conversationId, conversationPayload, ownerUserId ?? undefined)
+      } else {
+        await createCrmRecord("conversas", {
+          ...conversationPayload,
+          title: conversationPayload.contactName,
+        }, ownerUserId ?? undefined)
+      }
 
       return NextResponse.json({ received: true, event: "presence" })
     }
@@ -120,7 +129,7 @@ export async function POST(request: Request) {
       time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
     }
 
-    await upsertCrmRecordById("conversas", conversationId, {
+    const conversationPayload = {
       contactName: resolveStoredContactName(previousData, parsed.contactName, parsed.phone),
       phone: parsed.phone,
       source: String(previousData?.source ?? "manual"),
@@ -133,7 +142,16 @@ export async function POST(request: Request) {
       presenceStatus: parsed.direction === "entrada" ? "paused" : previousData?.presenceStatus,
       status: "aberta",
       rawLastWebhook: parsed.raw,
-    }, ownerUserId ?? undefined)
+    }
+
+    if (existingConversation && conversationId) {
+      await upsertCrmRecordById("conversas", conversationId, conversationPayload, ownerUserId ?? undefined)
+    } else {
+      await createCrmRecord("conversas", {
+        ...conversationPayload,
+        title: conversationPayload.contactName,
+      }, ownerUserId ?? undefined)
+    }
 
     return NextResponse.json({ received: true })
   } catch (error) {
