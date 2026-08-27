@@ -1256,10 +1256,6 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             </DialogHeader>
 
             <div className="grid gap-5 px-8 py-8">
-              <div className="inline-flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <Plus size={16} className="mt-0.5" />
-                <span>As credenciais reais da Evolution API devem continuar fora do frontend. Esta tela esta pronta para conversar com o backend da instancia.</span>
-              </div>
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nome do contato</label>
                 <input className={`${inputClass} mt-2`} value={newConversation.contactName} onChange={(event) => setNewConversation((current) => ({ ...current, contactName: event.target.value }))} placeholder="Nome ou empresa" />

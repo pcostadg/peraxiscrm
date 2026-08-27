@@ -1,5 +1,6 @@
 import "server-only"
 
+import { Buffer } from "node:buffer"
 import { normalizePhone as normalizeBrazilianPhone } from "@/services/validators"
 
 type SendEvolutionTextInput = {
@@ -125,6 +126,7 @@ export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
 
 export async function sendEvolutionAudioMessage(input: SendEvolutionAudioInput) {
   const config = getEvolutionConfig()
+  const normalizedAudio = normalizeOwnedMedia(input.audio)
   const response = await fetch(config.sendAudioUrl, {
     method: "POST",
     headers: {
@@ -133,9 +135,14 @@ export async function sendEvolutionAudioMessage(input: SendEvolutionAudioInput) 
     },
     body: JSON.stringify({
       number: normalizePhone(input.to),
-      audio: input.audio,
-      delay: input.delayTyping ?? 1200,
-      encoding: true,
+      options: {
+        delay: input.delayTyping ?? 1200,
+        presence: "recording",
+        encoding: true,
+      },
+      audioMessage: {
+        audio: normalizedAudio,
+      },
     }),
     cache: "no-store",
   })
@@ -150,20 +157,26 @@ export async function sendEvolutionAudioMessage(input: SendEvolutionAudioInput) 
 
 export async function sendEvolutionMediaMessage(input: SendEvolutionMediaInput) {
   const config = getEvolutionConfig()
+  const form = new FormData()
+  form.set("number", normalizePhone(input.to))
+  if (input.caption?.trim()) form.set("caption", input.caption.trim())
+  if (input.fileName?.trim()) form.set("fileName", input.fileName.trim())
+
+  const normalizedMedia = normalizeOwnedMedia(input.media)
+  const mediaFileName = resolveUploadFileName(input)
+  const mediaValue = createOwnedMediaFormValue(normalizedMedia, input.mimeType, mediaFileName)
+  if (mediaValue.kind === "url") {
+    form.set("media", mediaValue.value)
+  } else {
+    form.set("media", mediaValue.value, mediaValue.fileName)
+  }
+
   const response = await fetch(config.sendMediaUrl, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
       apikey: config.apiKey,
     },
-    body: JSON.stringify({
-      number: normalizePhone(input.to),
-      mediatype: input.kind === "imagem" ? "image" : input.kind === "video" ? "video" : "document",
-      media: input.media,
-      fileName: input.fileName || undefined,
-      caption: input.caption || undefined,
-      mimetype: input.mimeType || undefined,
-    }),
+    body: form,
     cache: "no-store",
   })
 
@@ -173,6 +186,31 @@ export async function sendEvolutionMediaMessage(input: SendEvolutionMediaInput) 
   }
 
   return result
+}
+
+function normalizeOwnedMedia(value: string) {
+  const normalized = value.trim()
+  const dataUrlMatch = normalized.match(/^data:([^;]+);base64,(.+)$/)
+  if (dataUrlMatch) return dataUrlMatch[2]
+  return normalized
+}
+
+function createOwnedMediaFormValue(media: string, mimeType?: string, fileName?: string) {
+  if (/^https?:\/\//i.test(media)) {
+    return { kind: "url" as const, value: media }
+  }
+
+  const contentType = mimeType?.trim() || "application/octet-stream"
+  const bytes = Buffer.from(media, "base64")
+  const blob = new Blob([bytes], { type: contentType })
+  return { kind: "blob" as const, value: blob, fileName }
+}
+
+function resolveUploadFileName(input: SendEvolutionMediaInput) {
+  if (input.fileName?.trim()) return input.fileName.trim()
+  if (input.kind === "imagem") return "imagem"
+  if (input.kind === "video") return "video"
+  return "documento"
 }
 
 export function isValidEvolutionWebhook(request: Request, body: string) {
