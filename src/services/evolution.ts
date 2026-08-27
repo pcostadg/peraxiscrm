@@ -12,6 +12,7 @@ type SendEvolutionAudioInput = {
   to: string
   audio: string
   delayTyping?: number
+  mimeType?: string
 }
 
 type SendEvolutionMediaInput = {
@@ -127,13 +128,14 @@ export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
 export async function sendEvolutionAudioMessage(input: SendEvolutionAudioInput) {
   const config = getEvolutionConfig()
   const normalizedAudio = normalizeOwnedMedia(input.audio)
-  const fileName = "gravacao.webm"
+  const mimeType = input.mimeType?.trim() || "audio/webm"
+  const fileName = resolveAudioFileName(mimeType)
   const primaryPayload = {
     number: normalizePhone(input.to),
     mediatype: "audio",
     media: normalizedAudio,
     fileName,
-    mimetype: "audio/webm",
+    mimetype: mimeType,
   }
 
   const primary = await postEvolutionJson(config.sendMediaUrl, config.apiKey, primaryPayload)
@@ -143,7 +145,7 @@ export async function sendEvolutionAudioMessage(input: SendEvolutionAudioInput) 
   form.set("number", normalizePhone(input.to))
   form.set("mediatype", "audio")
   form.set("fileName", fileName)
-  const mediaValue = createOwnedMediaFormValue(normalizedAudio, "audio/webm", fileName)
+  const mediaValue = createOwnedMediaFormValue(normalizedAudio, mimeType, fileName)
   if (mediaValue.kind === "url") {
     form.set("media", mediaValue.value)
   } else {
@@ -241,6 +243,14 @@ function resolveUploadFileName(input: SendEvolutionMediaInput) {
   if (input.kind === "imagem") return "imagem"
   if (input.kind === "video") return "video"
   return "documento"
+}
+
+function resolveAudioFileName(mimeType: string) {
+  if (mimeType.includes("ogg")) return "gravacao.ogg"
+  if (mimeType.includes("mpeg") || mimeType.includes("mp3")) return "gravacao.mp3"
+  if (mimeType.includes("wav")) return "gravacao.wav"
+  if (mimeType.includes("mp4") || mimeType.includes("m4a")) return "gravacao.m4a"
+  return "gravacao.webm"
 }
 
 function formatEvolutionError(result: unknown, fallbackMessage: string) {

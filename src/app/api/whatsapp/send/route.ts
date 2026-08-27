@@ -32,7 +32,12 @@ export async function POST(request: Request) {
     const isAudio = Boolean(body.audio)
     const isMedia = Boolean(body.media && body.kind)
     const result = isAudio
-      ? await sendEvolutionAudioMessage({ to: destinationPhone, audio: body.audio as string, delayTyping: 1 })
+      ? await sendEvolutionAudioMessage({
+          to: destinationPhone,
+          audio: body.audio as string,
+          delayTyping: 1,
+          mimeType: body.mimeType,
+        })
       : isMedia
         ? await sendEvolutionMediaMessage({
             to: destinationPhone,
