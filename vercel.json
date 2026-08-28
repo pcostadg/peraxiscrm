@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "src/app/api/queues/whatsapp-broadcast/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "crm-whatsapp-broadcast"
+        }
+      ]
+    }
+  }
+}

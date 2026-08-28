@@ -9,6 +9,7 @@ type SendCrmTextInput = {
   to: string
   message: string
   contactName?: string
+  assignedTo?: string
   agentId?: string
   conversationId?: string
 }
@@ -41,7 +42,7 @@ export async function sendCrmTextMessage(input: SendCrmTextInput) {
     phone: destinationPhone,
     source: "manual",
     unread: 0,
-    assignedTo: String(previousData?.assignedTo ?? "Equipe"),
+    assignedTo: input.assignedTo || String(previousData?.assignedTo ?? "Equipe"),
     tags: Array.isArray(previousData?.tags) ? previousData.tags : ["evolution", "manual"],
     lastMessage: input.message,
     updatedAt: "agora",

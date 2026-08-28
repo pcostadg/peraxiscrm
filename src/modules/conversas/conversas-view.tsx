@@ -22,7 +22,10 @@ const attachmentTypes = [
 type ConversationFormState = {
   contactName: string
   phone: string
+  phones: string
   assignedTo: string
+  message: string
+  bulkMode: boolean
 }
 
 type PendingAttachment = {
@@ -36,7 +39,10 @@ type PendingAttachment = {
 const emptyConversationForm: ConversationFormState = {
   contactName: "",
   phone: "",
+  phones: "",
   assignedTo: "",
+  message: "",
+  bulkMode: false,
 }
 
 function normalizeTagTone(value: unknown): ConversationTagTone {
@@ -321,6 +327,33 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
 
   async function handleStartConversation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    if (newConversation.bulkMode) {
+      try {
+        const response = await fetch("/api/whatsapp/broadcast", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phones: newConversation.phones,
+            message: newConversation.message,
+            assignedTo: newConversation.assignedTo,
+          }),
+        })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || "Nao foi possivel agendar o disparo.")
+
+        setDialogOpen(false)
+        setNewConversation(emptyConversationForm)
+        toast.success(result.message || "Disparo em lote agendado.")
+        if (Array.isArray(result.invalidPhones) && result.invalidPhones.length > 0) {
+          toast.error(`Alguns numeros foram ignorados: ${result.invalidPhones.join(", ")}`)
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha ao agendar o disparo.")
+      }
+
+      return
+    }
 
     const name = newConversation.contactName.trim() || "Novo contato"
     const id = `conversation-${Date.now()}`
@@ -1268,19 +1301,64 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
               <DialogTitle>Chamar novo numero</DialogTitle>
               <DialogDescription>
-                Crie manualmente uma conversa para a operacao iniciar o atendimento antes mesmo da primeira mensagem recebida.
+                Inicie uma conversa manualmente ou agende um disparo em lote com intervalo aleatorio entre os numeros.
               </DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-5 px-8 py-8">
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nome do contato</label>
-                <input className={`${inputClass} mt-2`} value={newConversation.contactName} onChange={(event) => setNewConversation((current) => ({ ...current, contactName: event.target.value }))} placeholder="Nome ou empresa" />
+              <div className="flex flex-wrap gap-3 rounded-2xl bg-slate-100/80 p-2">
+                <button
+                  type="button"
+                  className={`inline-flex min-w-40 items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition ${!newConversation.bulkMode ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}
+                  onClick={() => setNewConversation((current) => ({ ...current, bulkMode: false }))}
+                >
+                  Conversa unica
+                </button>
+                <button
+                  type="button"
+                  className={`inline-flex min-w-40 items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition ${newConversation.bulkMode ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}
+                  onClick={() => setNewConversation((current) => ({ ...current, bulkMode: true }))}
+                >
+                  Disparo em lote
+                </button>
               </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Numero</label>
-                <input className={`${inputClass} mt-2`} value={newConversation.phone} onChange={(event) => setNewConversation((current) => ({ ...current, phone: event.target.value }))} placeholder="+5511999999999" />
-              </div>
+
+              {!newConversation.bulkMode ? (
+                <>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nome do contato</label>
+                    <input className={`${inputClass} mt-2`} value={newConversation.contactName} onChange={(event) => setNewConversation((current) => ({ ...current, contactName: event.target.value }))} placeholder="Nome ou empresa" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Numero</label>
+                    <input className={`${inputClass} mt-2`} value={newConversation.phone} onChange={(event) => setNewConversation((current) => ({ ...current, phone: event.target.value }))} placeholder="+5511999999999" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Numeros</label>
+                    <textarea
+                      className={`${textareaClass} mt-2 min-h-32`}
+                      value={newConversation.phones}
+                      onChange={(event) => setNewConversation((current) => ({ ...current, phones: event.target.value }))}
+                      placeholder={"+5511999999999\n+5511988887777\n+5511977776666"}
+                    />
+                    <p className="mt-2 text-xs text-slate-500">Separe por quebra de linha, virgula ou ponto e virgula.</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mensagem</label>
+                    <textarea
+                      className={`${textareaClass} mt-2 min-h-36`}
+                      value={newConversation.message}
+                      onChange={(event) => setNewConversation((current) => ({ ...current, message: event.target.value }))}
+                      placeholder="Digite a mensagem que sera enviada para todos os numeros."
+                    />
+                    <p className="mt-2 text-xs text-slate-500">O backend agenda cada envio com intervalo aleatorio de 15 a 25 segundos.</p>
+                  </div>
+                </>
+              )}
+
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Responsavel</label>
                 <input className={`${inputClass} mt-2`} value={newConversation.assignedTo} onChange={(event) => setNewConversation((current) => ({ ...current, assignedTo: event.target.value }))} placeholder="Equipe ou agente" />
@@ -1293,7 +1371,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               </button>
               <button type="submit" className="inline-flex h-11 min-w-40 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white">
                 <PhoneCall size={16} />
-                Iniciar conversa
+                {newConversation.bulkMode ? "Agendar disparo" : "Iniciar conversa"}
               </button>
             </DialogFooter>
           </form>
