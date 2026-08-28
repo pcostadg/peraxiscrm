@@ -1886,6 +1886,8 @@ function formatBroadcastStatus(value: string) {
       return "Enviado"
     case "ignorado_duplicado":
       return "Ignorado por duplicacao"
+    case "auto_pausado":
+      return "Auto pausado"
     case "interrompido":
       return "Interrompido"
     case "sem_whatsapp":
@@ -1898,8 +1900,12 @@ function formatBroadcastStatus(value: string) {
       return "Concluido"
     case "concluido-parcial":
       return "Concluido parcial"
+    case "auto_pausado-parcial":
+      return "Auto pausado parcial"
     case "concluido-sem-envios":
       return "Sem envios"
+    case "processando-local":
+      return "Processando local"
     default:
       return "Agendado"
   }
@@ -1912,6 +1918,9 @@ function historyStatusClass(value: string) {
       return "bg-emerald-50 text-emerald-700"
     case "interrompido":
       return "bg-amber-50 text-amber-700"
+    case "auto_pausado":
+    case "auto_pausado-parcial":
+      return "bg-rose-50 text-rose-700"
     case "ignorado_duplicado":
     case "concluido-parcial":
       return "bg-amber-50 text-amber-700"

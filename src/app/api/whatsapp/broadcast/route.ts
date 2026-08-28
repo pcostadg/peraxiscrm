@@ -1,13 +1,19 @@
 import { accepted, requireApiUser } from "@/app/api/_shared"
 import { send } from "@/lib/vercel-queue"
-import { createCrmRecord } from "@/services/crm-repository"
-import { parsePhoneList } from "@/services/validators"
 import {
-  processWhatsappBroadcastMessage,
-  randomBroadcastDelaySeconds,
+  WHATSAPP_BROADCAST_AUTO_PAUSE_FAILURES,
+  WHATSAPP_BROADCAST_MAX_BATCH_SIZE,
   WHATSAPP_BROADCAST_MAX_DELAY_SECONDS,
+  WHATSAPP_BROADCAST_MAX_PER_HOUR,
   WHATSAPP_BROADCAST_MIN_DELAY_SECONDS,
   WHATSAPP_BROADCAST_TOPIC,
+} from "@/config/whatsapp-broadcast"
+import { createCrmRecord, listCrmRecords, type CrmRecord } from "@/services/crm-repository"
+import { parsePhoneList } from "@/services/validators"
+import {
+  buildBroadcastSchedule,
+  processWhatsappBroadcastMessage,
+  randomBroadcastDelaySeconds,
   type WhatsappBroadcastRecipientStatus,
   type WhatsappBroadcastMessage,
 } from "@/services/whatsapp-broadcast"
@@ -78,9 +84,19 @@ export async function POST(request: Request) {
   const duplicateEntries = validPhones.filter((item, index) => {
     return validPhones.findIndex((entry) => entry.phone === item.phone) !== index
   })
+
+  if (uniqueValidPhones.length > WHATSAPP_BROADCAST_MAX_BATCH_SIZE) {
+    return Response.json(
+      { error: `O lote ultrapassa o limite seguro de ${WHATSAPP_BROADCAST_MAX_BATCH_SIZE} numeros por envio.` },
+      { status: 400 },
+    )
+  }
+
+  const existingDispatchRecords = await listCrmRecords("disparos", user.id)
+  const schedulePlan = buildBroadcastSchedule(existingDispatchRecords as CrmRecord[], uniqueValidPhones.length)
   const batchId = `broadcast-${Date.now()}`
   const recipientStatuses = [
-    ...uniqueValidPhones.map<WhatsappBroadcastRecipientStatus>((item) => ({
+    ...uniqueValidPhones.map<WhatsappBroadcastRecipientStatus>((item, index) => ({
       phone: item.phone,
       contactName: item.contactName ?? null,
       labels: item.labels,
@@ -88,6 +104,7 @@ export async function POST(request: Request) {
       error: null,
       checkedAt: null,
       sentAt: null,
+      scheduledFor: schedulePlan[index]?.scheduledAt.toISOString() ?? null,
     })),
     ...duplicateEntries.map<WhatsappBroadcastRecipientStatus>((item) => ({
       phone: item.phone,
@@ -97,6 +114,7 @@ export async function POST(request: Request) {
       error: "Numero ignorado por duplicacao no mesmo disparo.",
       checkedAt: new Date().toISOString(),
       sentAt: null,
+      scheduledFor: null,
     })),
   ]
 
@@ -127,11 +145,17 @@ export async function POST(request: Request) {
       summary: {
         total: recipientStatuses.length,
         agendado: uniqueValidPhones.length,
+        autoPausado: 0,
         ignoradoDuplicado: duplicateEntries.length,
         enviado: 0,
         semWhatsapp: 0,
         falhaValidacao: 0,
         falhaEnvio: 0,
+      },
+      safeguards: {
+        maxBatchSize: WHATSAPP_BROADCAST_MAX_BATCH_SIZE,
+        maxPerHour: WHATSAPP_BROADCAST_MAX_PER_HOUR,
+        autoPauseFailures: WHATSAPP_BROADCAST_AUTO_PAUSE_FAILURES,
       },
       intervalSeconds: {
         min: WHATSAPP_BROADCAST_MIN_DELAY_SECONDS,
@@ -160,15 +184,10 @@ export async function POST(request: Request) {
       queueMessages.map((item) => processWhatsappBroadcastMessage(item)),
     )
   } else {
-    let accumulatedDelaySeconds = 0
     await Promise.all(
       queueMessages.map((item, index) => {
-        if (index > 0) {
-          accumulatedDelaySeconds += randomBroadcastDelaySeconds()
-        }
-
         return send(WHATSAPP_BROADCAST_TOPIC, item, {
-          delaySeconds: accumulatedDelaySeconds,
+          delaySeconds: schedulePlan[index]?.delaySeconds ?? randomBroadcastDelaySeconds(),
           idempotencyKey: `${batchId}-${index}-${item.to}`,
         })
       }),
@@ -176,7 +195,7 @@ export async function POST(request: Request) {
   }
 
   return accepted(
-    `${uniqueValidPhones.length} mensagem${uniqueValidPhones.length > 1 ? "ens" : ""} agendada${uniqueValidPhones.length > 1 ? "s" : ""} com validacao de WhatsApp em segundo plano e intervalo aleatorio de ${WHATSAPP_BROADCAST_MIN_DELAY_SECONDS} a ${WHATSAPP_BROADCAST_MAX_DELAY_SECONDS} segundos.`,
+    `${uniqueValidPhones.length} mensagem${uniqueValidPhones.length > 1 ? "ens" : ""} agendada${uniqueValidPhones.length > 1 ? "s" : ""} com limite seguro por lote, teto horario e pausa automatica por falhas.`,
     {
       batchId,
       dispatchRecordId: dispatchRecord.id,

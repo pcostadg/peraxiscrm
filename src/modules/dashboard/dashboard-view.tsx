@@ -1,13 +1,18 @@
 "use client"
 
-import { useState } from "react"
-import { BarChart3, CircleDollarSign, Clock3, FolderKanban, MessageCircle, TrendingUp, Users, UserRoundCheck } from "lucide-react"
-import { dashboardChartSeries, dashboardMetrics, dispatchReports, financeEntries, leads, projects } from "@/modules/shared/data"
+import { useEffect, useMemo, useState } from "react"
+import { Activity, BarChart3, CircleDollarSign, Clock3, FolderKanban, MessageCircle, ShieldAlert, TrendingUp, Users, UserRoundCheck } from "lucide-react"
+import { dashboardMetrics } from "@/modules/shared/data"
 import { ModuleHeader, PanelCard, Pill } from "@/modules/shared/components"
 import { cn } from "@/lib/utils"
 import { useRealtimeSync } from "@/services/use-realtime-sync"
 import type { CrmRecord } from "@/services/crm-repository"
 import { brl } from "@/modules/shared/data"
+import {
+  WHATSAPP_BROADCAST_AUTO_PAUSE_FAILURES,
+  WHATSAPP_BROADCAST_MAX_BATCH_SIZE,
+  WHATSAPP_BROADCAST_MAX_PER_HOUR,
+} from "@/config/whatsapp-broadcast"
 
 const icons = {
   faturamento: CircleDollarSign,
@@ -35,57 +40,217 @@ function financeTypeFromRecord(record: CrmRecord) {
   return String(record.data?.tipo ?? "entrada")
 }
 
+function financeStatusFromRecord(record: CrmRecord) {
+  return String(record.data?.status ?? "pendente")
+}
+
 function projectStatusFromRecord(record: CrmRecord) {
   return String(record.status ?? record.data?.status ?? "")
+}
+
+function isOperationalLeadRecord(record: CrmRecord) {
+  return String(record.data?.recordType ?? "") !== "lead_stage_config"
+}
+
+function isOperationalProjectRecord(record: CrmRecord) {
+  const recordType = String(record.data?.recordType ?? "")
+  return recordType !== "project_stage_config" && recordType !== "task" && recordType !== "task_stage_config"
 }
 
 function leadStatusFromRecord(record: CrmRecord) {
   return String(record.status ?? record.data?.status ?? "")
 }
 
+function buildMonthBuckets() {
+  const formatter = new Intl.DateTimeFormat("pt-BR", { month: "short" })
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date()
+    date.setDate(1)
+    date.setMonth(date.getMonth() - (5 - index))
+    return {
+      key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+      label: formatter.format(date).replace(".", ""),
+    }
+  })
+  return months
+}
+
+function monthKeyFromDate(value: string | Date | undefined) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+}
+
+function dispatchSummaryValue(record: CrmRecord, key: string) {
+  const summary = record.data?.summary
+  if (!summary || typeof summary !== "object") return 0
+  return Number((summary as Record<string, unknown>)[key] ?? 0)
+}
+
+function recipientStatusesFromDispatch(record: CrmRecord) {
+  const value = record.data?.recipientStatuses
+  return Array.isArray(value) ? value : []
+}
+
+function currentHourKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}`
+}
+
+function parseDateValue(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 export function DashboardView({
   dbCounts,
+  dispatchRecords = [],
   financeRecords = [],
   leadRecords = [],
   projectRecords = [],
 }: {
   dbCounts?: { leads: number; conversas: number; disparos: number; projetos: number; financeiro: number; usuarios: number }
+  dispatchRecords?: CrmRecord[]
   financeRecords?: CrmRecord[]
   leadRecords?: CrmRecord[]
   projectRecords?: CrmRecord[]
 }) {
   const [activeId, setActiveId] = useState(dashboardMetrics[0]?.id ?? "faturamento")
   const realtime = useRealtimeSync(["leads", "conversas", "disparos", "projetos", "financeiro"])
-  const liveFinanceEntries = financeRecords.length
-    ? financeRecords.map((record) => ({
-        tipo: financeTypeFromRecord(record),
-        valor: financeValueFromRecord(record),
-      }))
-    : financeEntries
+  const [liveLeadRecords, setLiveLeadRecords] = useState(leadRecords)
+  const [liveProjectRecords, setLiveProjectRecords] = useState(projectRecords)
+  const [liveFinanceRecords, setLiveFinanceRecords] = useState(financeRecords)
+  const [liveDispatchRecords, setLiveDispatchRecords] = useState(dispatchRecords)
+  const [conversationCount, setConversationCount] = useState(dbCounts?.conversas ?? 0)
 
-  const totalEntradas = liveFinanceEntries.filter((entry) => entry.tipo === "entrada").reduce((sum, entry) => sum + entry.valor, 0)
-  const totalSaidas = liveFinanceEntries.filter((entry) => entry.tipo === "saida").reduce((sum, entry) => sum + entry.valor, 0)
-  const activeProjectsCount = projectRecords.length
-    ? projectRecords.filter((record) => projectStatusFromRecord(record) !== "concluido").length
-    : projects.filter((project) => project.status !== "concluido").length
-  const pendingProjectsCount = projectRecords.length
-    ? projectRecords.filter((record) => {
-        const status = projectStatusFromRecord(record)
-        return status === "backlog" || status === "pendente"
-      }).length
-    : projects.filter((project) => project.status === "backlog").length
-  const closedLeadsCount = leadRecords.length
-    ? leadRecords.filter((record) => leadStatusFromRecord(record) === "fechado").length
-    : leads.filter((lead) => lead.status === "fechado").length
+  useEffect(() => {
+    async function refreshDashboard() {
+      try {
+        const [leadsResponse, conversationsResponse, dispatchResponse, projectsResponse, financeResponse] = await Promise.all([
+          fetch("/api/leads", { cache: "no-store" }),
+          fetch("/api/conversas", { cache: "no-store" }),
+          fetch("/api/disparos", { cache: "no-store" }),
+          fetch("/api/projetos", { cache: "no-store" }),
+          fetch("/api/financeiro", { cache: "no-store" }),
+        ])
+        const [leadsResult, conversationsResult, dispatchResult, projectsResult, financeResult] = await Promise.all([
+          leadsResponse.json(),
+          conversationsResponse.json(),
+          dispatchResponse.json(),
+          projectsResponse.json(),
+          financeResponse.json(),
+        ])
+
+        if (leadsResponse.ok && Array.isArray(leadsResult.data)) {
+          setLiveLeadRecords((leadsResult.data as CrmRecord[]).filter(isOperationalLeadRecord))
+        }
+        if (conversationsResponse.ok && Array.isArray(conversationsResult.data)) setConversationCount((conversationsResult.data as CrmRecord[]).length)
+        if (dispatchResponse.ok && Array.isArray(dispatchResult.data)) setLiveDispatchRecords(dispatchResult.data as CrmRecord[])
+        if (projectsResponse.ok && Array.isArray(projectsResult.data)) {
+          setLiveProjectRecords((projectsResult.data as CrmRecord[]).filter(isOperationalProjectRecord))
+        }
+        if (financeResponse.ok && Array.isArray(financeResult.data)) setLiveFinanceRecords(financeResult.data as CrmRecord[])
+      } catch {
+        // best effort refresh
+      }
+    }
+
+    void refreshDashboard()
+  }, [realtime.tick])
+
+  const liveFinanceEntries = liveFinanceRecords.map((record) => ({
+    tipo: financeTypeFromRecord(record),
+    valor: financeValueFromRecord(record),
+    status: financeStatusFromRecord(record),
+  }))
+  const operationalLeadRecords = liveLeadRecords.filter(isOperationalLeadRecord)
+  const operationalProjectRecords = liveProjectRecords.filter(isOperationalProjectRecord)
+
+  const totalEntradas = liveFinanceEntries.filter((entry) => entry.tipo === "entrada" && entry.status === "pago").reduce((sum, entry) => sum + entry.valor, 0)
+  const totalSaidas = liveFinanceEntries.filter((entry) => entry.tipo === "saida" && entry.status === "pago").reduce((sum, entry) => sum + entry.valor, 0)
+  const activeProjectsCount = operationalProjectRecords.filter((record) => {
+    const status = projectStatusFromRecord(record)
+    return status === "em_andamento" || status === "revisao"
+  }).length
+  const pendingProjectsCount = operationalProjectRecords.filter((record) => {
+    const status = projectStatusFromRecord(record)
+    return status === "backlog" || status === "pendente"
+  }).length
+  const closedLeadsCount = operationalLeadRecords.filter((record) => leadStatusFromRecord(record) === "fechado").length
+  const dispatchFailures = liveDispatchRecords.reduce(
+    (sum, record) => sum + dispatchSummaryValue(record, "falhaValidacao") + dispatchSummaryValue(record, "falhaEnvio"),
+    0,
+  )
+  const activeDispatches = liveDispatchRecords.filter((record) => {
+    const status = String(record.data?.status ?? record.status ?? "")
+    return status === "agendado" || status === "processando-local"
+  }).length
+  const autoPausedDispatches = liveDispatchRecords.filter((record) => String(record.data?.status ?? record.status ?? "") === "auto_pausado").length
+  const interruptedDispatches = liveDispatchRecords.filter((record) => String(record.data?.status ?? record.status ?? "").startsWith("interrompido")).length
+  const currentHourReservations = liveDispatchRecords.reduce((sum, record) => {
+    return sum + recipientStatusesFromDispatch(record).filter((entry) => {
+      if (!entry || typeof entry !== "object") return false
+      const item = entry as Record<string, unknown>
+      const status = String(item.status ?? "")
+      if (status === "interrompido" || status === "auto_pausado" || status === "ignorado_duplicado") return false
+      const reference = parseDateValue(item.scheduledFor ?? item.sentAt)
+      return reference ? currentHourKey(reference) === currentHourKey() : false
+    }).length
+  }, 0)
+  const recentDispatchFailures = liveDispatchRecords.reduce((sum, record) => {
+    const updatedAt = parseDateValue(record.updated_at)
+    if (!updatedAt) return sum
+    const last24Hours = Date.now() - updatedAt.getTime() <= 24 * 60 * 60 * 1000
+    if (!last24Hours) return sum
+    return sum + dispatchSummaryValue(record, "falhaValidacao") + dispatchSummaryValue(record, "falhaEnvio")
+  }, 0)
+  const healthTone =
+    autoPausedDispatches > 0
+      ? "rose"
+      : recentDispatchFailures >= Math.max(2, WHATSAPP_BROADCAST_AUTO_PAUSE_FAILURES - 1)
+        ? "amber"
+        : "emerald"
+  const healthLabel =
+    autoPausedDispatches > 0
+      ? "Pausado por falhas"
+      : recentDispatchFailures >= Math.max(2, WHATSAPP_BROADCAST_AUTO_PAUSE_FAILURES - 1)
+        ? "Em atencao"
+        : "Saudavel"
+  const monthBuckets = useMemo(() => buildMonthBuckets(), [])
+  const chartLabels = monthBuckets.map((item) => item.label)
+  const financeSeries = monthBuckets.map((bucket) =>
+    liveFinanceRecords
+      .filter((record) => monthKeyFromDate(record.data?.data as string | undefined) === bucket.key)
+      .filter((record) => financeTypeFromRecord(record) === "entrada" && financeStatusFromRecord(record) === "pago")
+      .reduce((sum, record) => sum + financeValueFromRecord(record), 0),
+  )
+  const closedLeadsSeries = monthBuckets.map((bucket) =>
+    operationalLeadRecords.filter((record) => monthKeyFromDate(record.updated_at) === bucket.key && leadStatusFromRecord(record) === "fechado").length,
+  )
+  const conversationSeries = monthBuckets.map(() => 0)
+  const activeProjectsSeries = monthBuckets.map((bucket) =>
+    operationalProjectRecords.filter((record) => {
+      const status = projectStatusFromRecord(record)
+      return monthKeyFromDate(record.updated_at) === bucket.key && (status === "em_andamento" || status === "revisao")
+    }).length,
+  )
+  const pendingProjectsSeries = monthBuckets.map((bucket) =>
+    operationalProjectRecords.filter((record) => {
+      const status = projectStatusFromRecord(record)
+      return monthKeyFromDate(record.updated_at) === bucket.key && (status === "backlog" || status === "pendente")
+    }).length,
+  )
+  const activeUsersSeries = monthBuckets.map(() => dbCounts?.usuarios ?? 0)
 
   const metrics = dashboardMetrics.map((metric) => {
     if (!dbCounts) return metric
-    if (metric.id === "faturamento") return { ...metric, value: brl(totalEntradas), trend: totalEntradas > 0 ? "recebido" : "0 no periodo" }
-    if (metric.id === "leads") return { ...metric, value: String(dbCounts.leads) }
-    if (metric.id === "conversas") return { ...metric, value: String(dbCounts.conversas) }
-    if (metric.id === "ativos") return { ...metric, value: String(activeProjectsCount), trend: `${activeProjectsCount} em andamento` }
-    if (metric.id === "pendentes") return { ...metric, value: String(pendingProjectsCount), trend: `${pendingProjectsCount} pendentes` }
-    if (metric.id === "usuarios") return { ...metric, value: String(dbCounts.usuarios), trend: `${dbCounts.usuarios} ativos` }
+    if (metric.id === "faturamento") return { ...metric, value: brl(totalEntradas), trend: totalEntradas > 0 ? "recebido" : "0 no periodo", series: financeSeries }
+    if (metric.id === "leads") return { ...metric, value: String(closedLeadsCount), trend: `${closedLeadsCount} fechados`, series: closedLeadsSeries }
+    if (metric.id === "conversas") return { ...metric, value: String(conversationCount), series: conversationSeries }
+    if (metric.id === "ativos") return { ...metric, value: String(activeProjectsCount), trend: `${activeProjectsCount} em andamento`, series: activeProjectsSeries }
+    if (metric.id === "pendentes") return { ...metric, value: String(pendingProjectsCount), trend: `${pendingProjectsCount} pendentes`, series: pendingProjectsSeries }
+    if (metric.id === "usuarios") return { ...metric, value: String(dbCounts.usuarios), trend: `${dbCounts.usuarios} ativos`, series: activeUsersSeries }
     return metric
   }).filter((metric) => metric.id !== "disparos")
   const activeMetric = metrics.find((metric) => metric.id === activeId) ?? metrics[0]
@@ -166,7 +331,7 @@ export function DashboardView({
           </div>
 
           <div className="mt-4 grid grid-cols-6 gap-2 text-center text-xs text-slate-500">
-            {dashboardChartSeries.map((item) => <span key={item.month}>{item.month}</span>)}
+            {chartLabels.map((item) => <span key={item}>{item}</span>)}
           </div>
         </PanelCard>
 
@@ -187,7 +352,7 @@ export function DashboardView({
               {[
                 ["Leads fechados", closedLeadsCount, Math.max(1, closedLeadsCount || 1)],
                 ["Projetos ativos", activeProjectsCount, Math.max(1, activeProjectsCount || 1)],
-                ["Falhas em disparos", dispatchReports.reduce((sum, item) => sum + item.falha, 0), 40],
+                ["Falhas em disparos", dispatchFailures, Math.max(1, dispatchFailures || 1)],
               ].map(([label, value, max]) => (
                 <div key={String(label)}>
                   <div className="flex justify-between text-xs text-slate-500"><span>{label}</span><strong>{value}</strong></div>
@@ -201,14 +366,83 @@ export function DashboardView({
         </PanelCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <PanelCard>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="text-blue-600" size={20} />
+              <h3 className="text-lg font-bold">Saude da instancia</h3>
+            </div>
+            <Pill tone={healthTone}>{healthLabel}</Pill>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-slate-50 p-4">
+              <p className="text-xs text-slate-500">Limite por lote</p>
+              <p className="mt-2 text-2xl font-bold text-slate-950">{WHATSAPP_BROADCAST_MAX_BATCH_SIZE}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4">
+              <p className="text-xs text-slate-500">Teto por hora</p>
+              <p className="mt-2 text-2xl font-bold text-slate-950">{WHATSAPP_BROADCAST_MAX_PER_HOUR}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4">
+              <p className="text-xs text-slate-500">Pausa automatica</p>
+              <p className="mt-2 text-2xl font-bold text-slate-950">{WHATSAPP_BROADCAST_AUTO_PAUSE_FAILURES} falhas</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4">
+              <p className="text-xs text-slate-500">Reservas nesta hora</p>
+              <p className="mt-2 text-2xl font-bold text-slate-950">{currentHourReservations}</p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center gap-2 text-slate-600">
+                <Activity size={16} />
+                <span className="text-xs font-semibold uppercase tracking-wide">Agendados</span>
+              </div>
+              <p className="mt-2 text-2xl font-bold text-slate-950">{activeDispatches}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Auto pausados</p>
+              <p className="mt-2 text-2xl font-bold text-rose-600">{autoPausedDispatches}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Interrompidos</p>
+              <p className="mt-2 text-2xl font-bold text-amber-600">{interruptedDispatches}</p>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {[
+              ["Uso do teto horario", currentHourReservations, WHATSAPP_BROADCAST_MAX_PER_HOUR],
+              ["Falhas nas ultimas 24h", recentDispatchFailures, Math.max(1, WHATSAPP_BROADCAST_AUTO_PAUSE_FAILURES)],
+            ].map(([label, value, max]) => (
+              <div key={String(label)}>
+                <div className="flex justify-between text-xs text-slate-500">
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-slate-100">
+                  <div className="h-2 rounded-full bg-blue-600 transition-all duration-700" style={{ width: `${Math.min(100, (Number(value) / Number(max)) * 100)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </PanelCard>
+
+        <div className="grid gap-4">
         <PanelCard>
           <h3 className="text-lg font-bold">Projetos por etapa</h3>
           <div className="mt-5 grid gap-3 sm:grid-cols-4">
             {["backlog", "em_andamento", "revisao", "concluido"].map((status) => (
               <div key={status} className="rounded-xl bg-slate-50 p-4">
                 <p className="text-xs capitalize text-slate-500">{status.replace("_", " ")}</p>
-                <p className="mt-2 text-2xl font-bold">{projects.filter((project) => project.status === status).length}</p>
+                <p className="mt-2 text-2xl font-bold">
+                  {liveProjectRecords.length
+                    ? liveProjectRecords.filter((record) => projectStatusFromRecord(record) === status).length
+                    : 0}
+                </p>
               </div>
             ))}
           </div>
@@ -220,11 +454,16 @@ export function DashboardView({
             {["novo", "contato", "qualificado", "proposta", "fechado"].map((status) => (
               <div key={status} className="rounded-xl bg-slate-50 p-4">
                 <p className="text-xs capitalize text-slate-500">{status}</p>
-                <p className="mt-2 text-2xl font-bold">{leads.filter((lead) => lead.status === status).length}</p>
+                <p className="mt-2 text-2xl font-bold">
+                  {liveLeadRecords.length
+                    ? liveLeadRecords.filter((record) => leadStatusFromRecord(record) === status).length
+                    : 0}
+                </p>
               </div>
             ))}
           </div>
         </PanelCard>
+        </div>
       </div>
     </div>
   )
