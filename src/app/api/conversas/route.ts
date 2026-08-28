@@ -35,6 +35,13 @@ export async function DELETE(request: Request) {
   if (response) return response
   const body = await request.json().catch(() => ({})) as { id?: string }
   if (!body.id) return Response.json({ error: "ID obrigatorio." }, { status: 400 })
-  await deleteCrmRecord("conversas", body.id, user.id)
-  return ok({ id: body.id })
+  try {
+    await deleteCrmRecord("conversas", body.id, user.role === "admin" ? undefined : user.id)
+    return ok({ id: body.id })
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Nao foi possivel excluir a conversa." },
+      { status: 400 },
+    )
+  }
 }

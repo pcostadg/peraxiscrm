@@ -853,7 +853,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: active.id }),
       })
-      const result = await response.json()
+      const result = await response.json().catch(() => null)
       if (!response.ok) throw new Error(result.error || "Nao foi possivel excluir a conversa.")
 
       const remaining = conversationItems.filter((item) => item.id !== active.id)

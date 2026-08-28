@@ -229,7 +229,13 @@ export async function upsertCrmRecordById(module: CrmModule, id: string, payload
 
 export async function deleteCrmRecord(module: CrmModule, id: string, ownerUserId?: string) {
   const record = await prisma.crmRecord.findUnique({ where: { id }, select: { module: true, ownerUserId: true } })
-  if (!record || record.module !== module || (ownerUserId && record.ownerUserId !== ownerUserId)) throw new Error("Registro nao encontrado.")
+  if (
+    !record ||
+    record.module !== module ||
+    (ownerUserId && record.ownerUserId !== ownerUserId && record.ownerUserId !== null)
+  ) {
+    throw new Error("Registro nao encontrado.")
+  }
   return prisma.crmRecord.delete({ where: { id } })
 }
 
