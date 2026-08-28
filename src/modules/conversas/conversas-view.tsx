@@ -637,13 +637,30 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || "Nao foi possivel enviar o anexo.")
-      setMessageItems((current) =>
-        current.map((message) =>
+      const providerMessageId = resolveEvolutionMessageId(result?.result)
+      setMessageItems((current) => {
+        const updated = current.map((message) =>
           message.id === optimisticMessage.id
-            ? { ...message, status: "enviado" }
+            ? {
+                ...message,
+                id: providerMessageId || message.id,
+                zapiMessageId: providerMessageId || message.zapiMessageId,
+                status: "enviado",
+              }
             : message,
-        ),
-      )
+        )
+
+        if (!providerMessageId) return updated
+
+        const deduped = new Map<string, ChatMessage>()
+        for (const message of updated) {
+          const key = message.zapiMessageId || message.id
+          if (deduped.has(key) && message.id === optimisticMessage.id) continue
+          deduped.set(key, message)
+        }
+
+        return Array.from(deduped.values())
+      })
       toast.success(`${capitalizeMediaKind(attachment.kind)} enviado${attachment.kind === "imagem" ? "a" : ""}.`)
     } catch (error) {
       setMessageItems((current) =>
@@ -1495,10 +1512,22 @@ function resolveChatMediaUrl(mediaUrl?: string) {
   return mediaUrl
 }
 
+function resolveEvolutionMessageId(result: unknown) {
+  if (!result || typeof result !== "object") return undefined
+  const payload = result as { key?: { id?: unknown }; message?: { key?: { id?: unknown } }; messageId?: unknown; id?: unknown }
+  if (typeof payload.key?.id === "string" && payload.key.id.trim()) return payload.key.id.trim()
+  if (typeof payload.message?.key?.id === "string" && payload.message.key.id.trim()) return payload.message.key.id.trim()
+  if (typeof payload.messageId === "string" && payload.messageId.trim()) return payload.messageId.trim()
+  if (typeof payload.id === "string" && payload.id.trim()) return payload.id.trim()
+  return undefined
+}
+
 function mergeMessageSnapshots(serverMessages: ChatMessage[], currentMessages: ChatMessage[]) {
-  const serverIds = new Set(serverMessages.map((message) => message.id))
+  const serverIds = new Set(
+    serverMessages.flatMap((message) => [message.id, message.zapiMessageId].filter((value): value is string => Boolean(value))),
+  )
   const localMessagesToKeep = currentMessages.filter((message) => {
-    if (serverIds.has(message.id)) return false
+    if (serverIds.has(message.id) || (message.zapiMessageId && serverIds.has(message.zapiMessageId))) return false
     if (message.direction !== "saida") return false
     if (message.status === "falha" || message.status === "pendente") return true
     return Boolean(message.mediaUrl?.startsWith("data:") || message.mediaUrl?.startsWith("blob:"))
