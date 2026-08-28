@@ -231,6 +231,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [draft, setDraft] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newConversation, setNewConversation] = useState<ConversationFormState>(emptyConversationForm)
+  const [bulkAttachment, setBulkAttachment] = useState<PendingAttachment | null>(null)
   const [sending, setSending] = useState(false)
   const [tagDialogOpen, setTagDialogOpen] = useState(false)
   const [newTag, setNewTag] = useState("")
@@ -336,6 +337,11 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           body: JSON.stringify({
             phones: newConversation.phones,
             message: newConversation.message,
+            media: bulkAttachment?.media,
+            previewUrl: bulkAttachment?.previewUrl,
+            kind: bulkAttachment?.kind,
+            mimeType: bulkAttachment?.mimeType,
+            fileName: bulkAttachment?.fileName,
             assignedTo: newConversation.assignedTo,
           }),
         })
@@ -344,6 +350,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
 
         setDialogOpen(false)
         setNewConversation(emptyConversationForm)
+        setBulkAttachment(null)
         toast.success(result.message || "Disparo em lote agendado.")
         if (Array.isArray(result.invalidPhones) && result.invalidPhones.length > 0) {
           toast.error(`Alguns numeros foram ignorados: ${result.invalidPhones.join(", ")}`)
@@ -402,6 +409,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       setActiveId(persisted.id)
       setDialogOpen(false)
       setNewConversation(emptyConversationForm)
+      setBulkAttachment(null)
       toast.success("Conversa iniciada.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao iniciar conversa.")
@@ -613,6 +621,25 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       toast.success(`${capitalizeMediaKind(kind)} pronto${kind === "imagem" ? "a" : ""} para envio.`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao preparar o anexo.")
+    }
+  }
+
+  async function handleBulkAttachmentSelected(file?: File | null) {
+    if (!file || sending) return
+
+    try {
+      const media = await fileToDataUrl(file)
+      const previewUrl = await createImagePreviewDataUrl(file)
+      setBulkAttachment({
+        kind: "imagem",
+        media,
+        previewUrl,
+        mimeType: file.type || undefined,
+        fileName: file.name,
+      })
+      toast.success("Imagem pronta para o disparo em lote.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao preparar a imagem do disparo.")
     }
   }
 
@@ -1310,7 +1337,10 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 <button
                   type="button"
                   className={`inline-flex min-w-40 items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition ${!newConversation.bulkMode ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}
-                  onClick={() => setNewConversation((current) => ({ ...current, bulkMode: false }))}
+                  onClick={() => {
+                    setNewConversation((current) => ({ ...current, bulkMode: false }))
+                    setBulkAttachment(null)
+                  }}
                 >
                   Conversa unica
                 </button>
@@ -1356,6 +1386,41 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                     />
                     <p className="mt-2 text-xs text-slate-500">O backend agenda cada envio com intervalo aleatorio de 5 a 10 segundos.</p>
                   </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Imagem do disparo</label>
+                    <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+                      <ImageIcon size={16} />
+                      Selecionar imagem
+                      <input
+                        className="sr-only"
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          void handleBulkAttachmentSelected(event.target.files?.[0])
+                          event.currentTarget.value = ""
+                        }}
+                      />
+                    </label>
+                    <p className="mt-2 text-xs text-slate-500">Opcional. Se selecionar uma imagem, a descricao acima sera enviada junto.</p>
+                  </div>
+                  {bulkAttachment && (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex flex-wrap items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={bulkAttachment.previewUrl || bulkAttachment.media} alt={bulkAttachment.fileName} className="max-h-56 w-full rounded-2xl object-cover" />
+                          <p className="mt-2 text-xs text-slate-500">Imagem selecionada para o disparo em lote.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setBulkAttachment(null)}
+                          className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                        >
+                          Remover imagem
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1366,7 +1431,14 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             </div>
 
             <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-6">
-              <button type="button" className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(false)}>
+              <button
+                type="button"
+                className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700"
+                onClick={() => {
+                  setDialogOpen(false)
+                  setBulkAttachment(null)
+                }}
+              >
                 Cancelar
               </button>
               <button type="submit" className="inline-flex h-11 min-w-40 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white">

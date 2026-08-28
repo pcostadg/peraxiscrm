@@ -6,9 +6,14 @@ export type WhatsappBroadcastMessage = {
   batchId: string
   userId: string
   to: string
-  message: string
+  message?: string
   assignedTo?: string
   contactName?: string
+  media?: string
+  previewUrl?: string
+  kind?: "imagem" | "video" | "documento"
+  mimeType?: string
+  fileName?: string
 }
 
 export function randomBroadcastDelaySeconds() {

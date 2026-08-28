@@ -1,7 +1,7 @@
 import { accepted, requireApiUser } from "@/app/api/_shared"
 import { send } from "@/lib/vercel-queue"
 import { createCrmRecord } from "@/services/crm-repository"
-import { sendCrmTextMessage } from "@/services/crm-whatsapp"
+import { sendCrmMediaMessage, sendCrmTextMessage } from "@/services/crm-whatsapp"
 import { parsePhoneList } from "@/services/validators"
 import {
   randomBroadcastDelaySeconds,
@@ -14,6 +14,11 @@ import {
 type BroadcastBody = {
   phones?: string
   message?: string
+  media?: string
+  previewUrl?: string
+  kind?: "imagem" | "video" | "documento"
+  mimeType?: string
+  fileName?: string
   assignedTo?: string
   contactName?: string
 }
@@ -24,13 +29,19 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null) as BroadcastBody | null
   const message = String(body?.message ?? "").trim()
+  const media = String(body?.media ?? "").trim() || undefined
   const assignedTo = String(body?.assignedTo ?? "").trim() || "Equipe"
   const parsedPhones = parsePhoneList(String(body?.phones ?? ""))
   const validPhones = parsedPhones.filter((item) => item.valid)
   const invalidPhones = parsedPhones.filter((item) => !item.valid).map((item) => item.phone)
+  const kind = body?.kind
 
-  if (!message) {
-    return Response.json({ error: "Mensagem obrigatoria." }, { status: 400 })
+  if (!message && !media) {
+    return Response.json({ error: "Mensagem ou imagem obrigatoria." }, { status: 400 })
+  }
+
+  if (media && !kind) {
+    return Response.json({ error: "Tipo da midia obrigatorio." }, { status: 400 })
   }
 
   if (!validPhones.length) {
@@ -43,9 +54,14 @@ export async function POST(request: Request) {
       batchId,
       userId: user.id,
       to: item.phone,
-      message,
+      message: message || undefined,
       assignedTo,
       contactName: String(body?.contactName ?? "").trim() || undefined,
+      media,
+      previewUrl: String(body?.previewUrl ?? "").trim() || undefined,
+      kind,
+      mimeType: String(body?.mimeType ?? "").trim() || undefined,
+      fileName: String(body?.fileName ?? "").trim() || undefined,
     }
   })
 
@@ -54,13 +70,26 @@ export async function POST(request: Request) {
   if (queueUnavailable) {
     void Promise.allSettled(
       queueMessages.map((item) =>
-        sendCrmTextMessage({
-          userId: item.userId,
-          to: item.to,
-          message: item.message,
-          contactName: item.contactName,
-          assignedTo: item.assignedTo,
-        }),
+        item.media && item.kind
+          ? sendCrmMediaMessage({
+              userId: item.userId,
+              to: item.to,
+              media: item.media,
+              kind: item.kind,
+              message: item.message,
+              previewUrl: item.previewUrl,
+              mimeType: item.mimeType,
+              fileName: item.fileName,
+              contactName: item.contactName,
+              assignedTo: item.assignedTo,
+            })
+          : sendCrmTextMessage({
+              userId: item.userId,
+              to: item.to,
+              message: item.message ?? "",
+              contactName: item.contactName,
+              assignedTo: item.assignedTo,
+            }),
       ),
     )
   } else {
@@ -85,6 +114,8 @@ export async function POST(request: Request) {
       title: `Disparo em lote ${new Date().toLocaleDateString("pt-BR")}`,
       batchId,
       message,
+      kind: kind ?? null,
+      fileName: body?.fileName ?? null,
       assignedTo,
       phones: validPhones.map((item) => item.phone),
       invalidPhones,
