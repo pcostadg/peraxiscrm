@@ -1,6 +1,6 @@
 export const WHATSAPP_BROADCAST_TOPIC = "crm-whatsapp-broadcast"
-export const WHATSAPP_BROADCAST_MIN_DELAY_SECONDS = 15
-export const WHATSAPP_BROADCAST_MAX_DELAY_SECONDS = 25
+export const WHATSAPP_BROADCAST_MIN_DELAY_SECONDS = 5
+export const WHATSAPP_BROADCAST_MAX_DELAY_SECONDS = 10
 
 export type WhatsappBroadcastMessage = {
   batchId: string

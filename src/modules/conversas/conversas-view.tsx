@@ -1354,7 +1354,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                       onChange={(event) => setNewConversation((current) => ({ ...current, message: event.target.value }))}
                       placeholder="Digite a mensagem que sera enviada para todos os numeros."
                     />
-                    <p className="mt-2 text-xs text-slate-500">O backend agenda cada envio com intervalo aleatorio de 15 a 25 segundos.</p>
+                    <p className="mt-2 text-xs text-slate-500">O backend agenda cada envio com intervalo aleatorio de 5 a 10 segundos.</p>
                   </div>
                 </>
               )}
