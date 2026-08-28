@@ -106,7 +106,10 @@ export async function POST(request: Request) {
       title: `Disparo em lote ${new Date().toLocaleDateString("pt-BR")}`,
       batchId,
       message,
+      media,
+      previewUrl: String(body?.previewUrl ?? "").trim() || null,
       kind: kind ?? null,
+      mimeType: String(body?.mimeType ?? "").trim() || null,
       fileName: body?.fileName ?? null,
       assignedTo,
       phones: uniqueValidPhones.map((item) => item.phone),
@@ -149,11 +152,6 @@ export async function POST(request: Request) {
       assignedTo,
       contactName: item.contactName || String(body?.contactName ?? "").trim() || undefined,
       tagLabels: item.labels,
-      media,
-      previewUrl: String(body?.previewUrl ?? "").trim() || undefined,
-      kind,
-      mimeType: String(body?.mimeType ?? "").trim() || undefined,
-      fileName: String(body?.fileName ?? "").trim() || undefined,
     }
   })
 

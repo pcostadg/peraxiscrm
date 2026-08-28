@@ -17,11 +17,6 @@ export type WhatsappBroadcastMessage = {
   assignedTo?: string
   contactName?: string
   tagLabels?: string[]
-  media?: string
-  previewUrl?: string
-  kind?: "imagem" | "video" | "documento"
-  mimeType?: string
-  fileName?: string
 }
 
 export type WhatsappBroadcastRecipientStatus = {
@@ -36,6 +31,18 @@ export type WhatsappBroadcastRecipientStatus = {
 
 export async function processWhatsappBroadcastMessage(message: WhatsappBroadcastMessage) {
   const checkedAt = new Date().toISOString()
+  const dispatchRecord = await getCrmRecordById("disparos", message.dispatchRecordId)
+  if (!dispatchRecord) {
+    throw new Error("Registro do disparo nao encontrado.")
+  }
+
+  const dispatchData = dispatchRecord.data as Record<string, unknown>
+  const sharedMessage = message.message ?? normalizeOptionalString(dispatchData.message)
+  const sharedMedia = normalizeOptionalString(dispatchData.media)
+  const sharedPreviewUrl = normalizeOptionalString(dispatchData.previewUrl)
+  const sharedMimeType = normalizeOptionalString(dispatchData.mimeType)
+  const sharedFileName = normalizeOptionalString(dispatchData.fileName)
+  const sharedKind = normalizeMediaKind(dispatchData.kind)
 
   try {
     const check = await checkEvolutionWhatsAppNumber(message.to)
@@ -56,17 +63,17 @@ export async function processWhatsappBroadcastMessage(message: WhatsappBroadcast
     return { status: "falha_validacao" as const }
   }
 
-  if (message.media && message.kind) {
+  if (sharedMedia && sharedKind) {
     try {
       await sendCrmMediaMessage({
         userId: message.userId,
         to: message.to,
-        media: message.media,
-        kind: message.kind,
-        message: message.message,
-        previewUrl: message.previewUrl,
-        mimeType: message.mimeType,
-        fileName: message.fileName,
+        media: sharedMedia,
+        kind: sharedKind,
+        message: sharedMessage,
+        previewUrl: sharedPreviewUrl,
+        mimeType: sharedMimeType,
+        fileName: sharedFileName,
         contactName: message.contactName,
         assignedTo: message.assignedTo,
         tagLabels: message.tagLabels,
@@ -92,7 +99,7 @@ export async function processWhatsappBroadcastMessage(message: WhatsappBroadcast
     await sendCrmTextMessage({
       userId: message.userId,
       to: message.to,
-      message: message.message ?? "",
+      message: sharedMessage ?? "",
       contactName: message.contactName,
       assignedTo: message.assignedTo,
       tagLabels: message.tagLabels,
@@ -197,6 +204,17 @@ function summarizeStatuses(entries: unknown[]) {
 function normalizeLabels(value: unknown) {
   if (!Array.isArray(value)) return []
   return value.map((item) => String(item ?? "").trim()).filter(Boolean)
+}
+
+function normalizeOptionalString(value: unknown) {
+  if (typeof value !== "string") return undefined
+  const normalized = value.trim()
+  return normalized || undefined
+}
+
+function normalizeMediaKind(value: unknown) {
+  if (value === "imagem" || value === "video" || value === "documento") return value
+  return undefined
 }
 
 export function randomBroadcastDelaySeconds() {

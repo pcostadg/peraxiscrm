@@ -391,14 +391,14 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             assignedTo: newConversation.assignedTo,
           }),
         })
-        const result = await response.json()
-        if (!response.ok) throw new Error(result.error || "Nao foi possivel agendar o disparo.")
+        const result = await readJsonResponse(response)
+        if (!response.ok) throw new Error(readResponseMessage(result.error, "Nao foi possivel agendar o disparo."))
 
         setDialogOpen(false)
         setNewConversation(emptyConversationForm)
         setBulkAttachment(null)
         setImportedRecipients([])
-        toast.success(result.message || "Disparo em lote agendado.")
+        toast.success(readResponseMessage(result.message, "Disparo em lote agendado."))
         if (Array.isArray(result.invalidPhones) && result.invalidPhones.length > 0) {
           toast.error(`Alguns numeros foram ignorados: ${result.invalidPhones.join(", ")}`)
         }
@@ -2015,6 +2015,25 @@ function splitImportedLabels(value: string) {
         .filter(Boolean),
     ),
   )
+}
+
+async function readJsonResponse(response: Response) {
+  const text = await response.text()
+  if (!text) return {} as Record<string, unknown>
+
+  try {
+    return JSON.parse(text) as Record<string, unknown>
+  } catch {
+    return {
+      error: text.startsWith("<")
+        ? "O servidor retornou uma resposta invalida. Tente novamente com uma imagem menor ou sem imagem."
+        : text,
+    }
+  }
+}
+
+function readResponseMessage(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback
 }
 
 function normalizeMessageKind(kind: unknown, mimeType?: string, mediaUrl?: string): ChatMessage["kind"] {
