@@ -13,7 +13,7 @@ import {
 
 type BroadcastBody = {
   phones?: string
-  recipients?: Array<{ phone?: string; contactName?: string; label?: string }>
+  recipients?: Array<{ phone?: string; contactName?: string; label?: string; labels?: string[] }>
   message?: string
   media?: string
   previewUrl?: string
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     ? body.recipients.map((item) => ({
         phone: String(item?.phone ?? ""),
         contactName: String(item?.contactName ?? "").trim() || undefined,
-        label: String(item?.label ?? "").trim() || undefined,
+        labels: Array.isArray(item?.labels) ? normalizeLabelList(item.labels) : splitLabelList(String(item?.label ?? "")),
       }))
     : []
   const parsedPhones = importedRecipients.length
@@ -47,10 +47,10 @@ export async function POST(request: Request) {
           phone: first?.phone ?? "",
           valid: first?.valid ?? false,
           contactName: item.contactName,
-          label: item.label,
+          labels: item.labels,
         }
       })
-    : parsePhoneList(String(body?.phones ?? "")).map((item) => ({ ...item, contactName: undefined, label: undefined }))
+    : parsePhoneList(String(body?.phones ?? "")).map((item) => ({ ...item, contactName: undefined, labels: [] as string[] }))
   const validPhones = parsedPhones.filter((item) => item.valid)
   const invalidPhones = parsedPhones.filter((item) => !item.valid).map((item) => item.phone)
   const kind = body?.kind
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       message: message || undefined,
       assignedTo,
       contactName: item.contactName || String(body?.contactName ?? "").trim() || undefined,
-      tagLabel: item.label,
+      tagLabels: item.labels,
       media,
       previewUrl: String(body?.previewUrl ?? "").trim() || undefined,
       kind,
@@ -117,7 +117,7 @@ export async function POST(request: Request) {
               fileName: item.fileName,
               contactName: item.contactName,
               assignedTo: item.assignedTo,
-              tagLabel: item.tagLabel,
+              tagLabels: item.tagLabels,
             })
           : sendCrmTextMessage({
               userId: item.userId,
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
               message: item.message ?? "",
               contactName: item.contactName,
               assignedTo: item.assignedTo,
-              tagLabel: item.tagLabel,
+              tagLabels: item.tagLabels,
             }),
       ),
     )
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
       recipients: validPhones.map((item) => ({
         phone: item.phone,
         contactName: item.contactName ?? null,
-        label: item.label ?? null,
+        labels: item.labels,
       })),
       invalidPhones,
       totalValidPhones: validPhones.length,
@@ -183,4 +183,12 @@ export async function POST(request: Request) {
       background: !queueUnavailable,
     },
   )
+}
+
+function splitLabelList(value: string) {
+  return normalizeLabelList(value.split(","))
+}
+
+function normalizeLabelList(values: string[]) {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)))
 }

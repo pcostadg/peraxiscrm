@@ -10,7 +10,7 @@ type SendCrmTextInput = {
   message: string
   contactName?: string
   assignedTo?: string
-  tagLabel?: string
+  tagLabels?: string[]
   agentId?: string
   conversationId?: string
 }
@@ -26,7 +26,7 @@ type SendCrmMediaInput = {
   fileName?: string
   contactName?: string
   assignedTo?: string
-  tagLabel?: string
+  tagLabels?: string[]
   agentId?: string
   conversationId?: string
 }
@@ -60,7 +60,7 @@ export async function sendCrmTextMessage(input: SendCrmTextInput) {
     source: "manual",
     unread: 0,
     assignedTo: input.assignedTo || String(previousData?.assignedTo ?? "Equipe"),
-    tags: mergeConversationTags(previousData, input.tagLabel),
+    tags: mergeConversationTags(previousData, input.tagLabels),
     lastMessage: input.message,
     updatedAt: "agora",
     messages: [...previousMessages, nextMessage],
@@ -118,7 +118,7 @@ export async function sendCrmMediaMessage(input: SendCrmMediaInput) {
     source: "manual",
     unread: 0,
     assignedTo: input.assignedTo || String(previousData?.assignedTo ?? "Equipe"),
-    tags: mergeConversationTags(previousData, input.tagLabel),
+    tags: mergeConversationTags(previousData, input.tagLabels),
     lastMessage: input.message || defaultMediaLabel(input.kind),
     updatedAt: "agora",
     messages: [...previousMessages, nextMessage],
@@ -165,21 +165,29 @@ function resolvePersistedPreviewUrl(value?: string) {
   return normalized
 }
 
-function mergeConversationTags(previousData: Record<string, unknown> | undefined, tagLabel?: string) {
+function mergeConversationTags(previousData: Record<string, unknown> | undefined, tagLabels?: string[]) {
   const baseTags = Array.isArray(previousData?.tags) ? previousData.tags : ["evolution", "manual"]
-  const normalizedCustomTag = tagLabel?.trim()
-  if (!normalizedCustomTag) return baseTags
+  const normalizedCustomTags = Array.from(new Set((tagLabels ?? []).map((tag) => tag.trim()).filter(Boolean)))
+  if (!normalizedCustomTags.length) return baseTags
 
-  const hasTag = baseTags.some((tag) => {
-    if (typeof tag === "string") return tag.trim().toLowerCase() === normalizedCustomTag.toLowerCase()
-    if (tag && typeof tag === "object" && "label" in tag) {
-      return String(tag.label ?? "").trim().toLowerCase() === normalizedCustomTag.toLowerCase()
-    }
-    return false
-  })
+  const existingLabels = new Set(
+    baseTags
+      .map((tag) => {
+        if (typeof tag === "string") return tag.trim().toLowerCase()
+        if (tag && typeof tag === "object" && "label" in tag) {
+          return String(tag.label ?? "").trim().toLowerCase()
+        }
+        return ""
+      })
+      .filter(Boolean),
+  )
 
-  if (hasTag) return baseTags
-  return [...baseTags, { label: normalizedCustomTag, tone: "amber" }]
+  const nextTags = normalizedCustomTags
+    .filter((tag) => !existingLabels.has(tag.toLowerCase()))
+    .map((tag) => ({ label: tag, tone: "amber" as const }))
+
+  if (!nextTags.length) return baseTags
+  return [...baseTags, ...nextTags]
 }
 
 function resolveEvolutionMessageId(result: unknown) {

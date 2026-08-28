@@ -39,7 +39,7 @@ type PendingAttachment = {
 type ImportedBroadcastRecipient = {
   contactName: string
   phone: string
-  label: string
+  labels: string[]
 }
 
 const emptyConversationForm: ConversationFormState = {
@@ -349,7 +349,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
             recipients: importedRecipients.map((item) => ({
               contactName: item.contactName,
               phone: item.phone,
-              label: item.label,
+              labels: item.labels,
             })),
             message: newConversation.message,
             media: bulkAttachment?.media,
@@ -1463,7 +1463,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                             <div key={`${item.phone}-${index}`} className="grid gap-1 border-b border-slate-100 px-3 py-2 text-xs text-slate-600 last:border-b-0 md:grid-cols-[1.2fr_1fr_1fr] md:items-center md:gap-3">
                               <span className="font-semibold text-slate-800">{item.contactName || "Sem nome"}</span>
                               <span>{item.phone}</span>
-                              <span>{item.label || "Sem etiqueta"}</span>
+                              <span>{item.labels.join(", ") || "Sem etiqueta"}</span>
                             </div>
                           ))}
                         </div>
@@ -1755,10 +1755,21 @@ async function parseBroadcastSpreadsheet(file: File) {
       return {
         contactName: normalizedRow.categoryname ?? "",
         phone: normalizedRow.phone ?? "",
-        label: normalizedRow.label ?? "",
+        labels: splitImportedLabels(normalizedRow.label ?? ""),
       }
     })
     .filter((row) => row.phone)
+}
+
+function splitImportedLabels(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  )
 }
 
 function normalizeMessageKind(kind: unknown, mimeType?: string, mediaUrl?: string): ChatMessage["kind"] {
