@@ -639,13 +639,13 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       if (!response.ok) throw new Error(result.error || "Nao foi possivel enviar o anexo.")
       const providerMessageId = resolveEvolutionMessageId(result?.result)
       setMessageItems((current) => {
-        const updated = current.map((message) =>
+        const updated: ChatMessage[] = current.map((message) =>
           message.id === optimisticMessage.id
             ? {
                 ...message,
                 id: providerMessageId || message.id,
                 zapiMessageId: providerMessageId || message.zapiMessageId,
-                status: "enviado",
+                status: "enviado" as const,
               }
             : message,
         )
