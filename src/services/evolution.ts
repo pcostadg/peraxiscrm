@@ -30,6 +30,13 @@ type ResolveEvolutionPhoneResult = {
   exists: boolean
 }
 
+type CheckEvolutionWhatsAppResult = {
+  exists: boolean
+  phone: string
+  jid?: string
+  raw: unknown
+}
+
 export type ParsedEvolutionWebhook =
   | {
       event: "presence"
@@ -100,6 +107,30 @@ export async function resolveEvolutionPhone(input: string): Promise<ResolveEvolu
     phone: normalizedInput,
     exists: Boolean(normalizedInput),
   }
+}
+
+export async function checkEvolutionWhatsAppNumber(input: string): Promise<CheckEvolutionWhatsAppResult> {
+  const config = getEvolutionConfig()
+  const normalizedInput = normalizePhone(input)
+  const endpoint = `${config.baseUrl}/chat/whatsappNumbers/${encodeURIComponent(config.instanceName)}`
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: config.apiKey,
+    },
+    body: JSON.stringify({
+      numbers: [normalizedInput],
+    }),
+    cache: "no-store",
+  })
+
+  const result = await parseApiResponse(response)
+  if (!response.ok) {
+    throw new Error(formatEvolutionError(result, "A Evolution API recusou a validacao do numero."))
+  }
+
+  return parseWhatsappNumberCheck(result, normalizedInput)
 }
 
 export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
@@ -256,6 +287,50 @@ function resolveAudioFileName(mimeType: string) {
 function formatEvolutionError(result: unknown, fallbackMessage: string) {
   if (typeof result === "object" && result) return JSON.stringify(result)
   return fallbackMessage
+}
+
+function parseWhatsappNumberCheck(result: unknown, fallbackPhone: string): CheckEvolutionWhatsAppResult {
+  const candidates = Array.isArray(result)
+    ? result
+    : result && typeof result === "object"
+      ? [
+          ...(Array.isArray((result as { data?: unknown }).data) ? (result as { data: unknown[] }).data : []),
+          ...(Array.isArray((result as { numbers?: unknown }).numbers) ? ((result as { numbers: unknown[] }).numbers) : []),
+          ...(Array.isArray((result as { response?: unknown }).response) ? ((result as { response: unknown[] }).response) : []),
+          result,
+        ]
+      : []
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue
+    const entry = candidate as Record<string, unknown>
+    const hasKnownShape = [
+      "exists",
+      "exist",
+      "onWhatsapp",
+      "isWhatsapp",
+      "jid",
+      "remoteJid",
+      "remoteJidAlt",
+      "number",
+      "phone",
+    ].some((key) => key in entry)
+    if (!hasKnownShape) continue
+    const exists = Boolean(entry.exists ?? entry.exist ?? entry.onWhatsapp ?? entry.isWhatsapp)
+    const jid = firstDefinedString([entry.jid, entry.remoteJid, entry.remoteJidAlt])
+    const phone = normalizePhone(firstDefinedString([entry.number, entry.phone, jid]) || fallbackPhone)
+    return { exists, phone: phone || fallbackPhone, jid: jid || undefined, raw: result }
+  }
+
+  return { exists: false, phone: fallbackPhone, raw: result }
+}
+
+function firstDefinedString(values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+
+  return ""
 }
 
 export function isValidEvolutionWebhook(request: Request, body: string) {

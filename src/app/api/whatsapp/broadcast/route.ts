@@ -1,13 +1,14 @@
 import { accepted, requireApiUser } from "@/app/api/_shared"
 import { send } from "@/lib/vercel-queue"
 import { createCrmRecord } from "@/services/crm-repository"
-import { sendCrmMediaMessage, sendCrmTextMessage } from "@/services/crm-whatsapp"
 import { parsePhoneList } from "@/services/validators"
 import {
+  processWhatsappBroadcastMessage,
   randomBroadcastDelaySeconds,
   WHATSAPP_BROADCAST_MAX_DELAY_SECONDS,
   WHATSAPP_BROADCAST_MIN_DELAY_SECONDS,
   WHATSAPP_BROADCAST_TOPIC,
+  type WhatsappBroadcastRecipientStatus,
   type WhatsappBroadcastMessage,
 } from "@/services/whatsapp-broadcast"
 
@@ -82,10 +83,58 @@ export async function POST(request: Request) {
     )
   }
 
+  const queueUnavailable = process.env.VERCEL !== "1"
   const batchId = `broadcast-${Date.now()}`
+  const recipientStatuses = validPhones.map<WhatsappBroadcastRecipientStatus>((item) => ({
+    phone: item.phone,
+    contactName: item.contactName ?? null,
+    labels: item.labels,
+    status: "agendado",
+    error: null,
+    checkedAt: null,
+    sentAt: null,
+  }))
+
+  const dispatchRecord = await createCrmRecord(
+    "disparos",
+    {
+      title: `Disparo em lote ${new Date().toLocaleDateString("pt-BR")}`,
+      batchId,
+      message,
+      kind: kind ?? null,
+      fileName: body?.fileName ?? null,
+      assignedTo,
+      phones: validPhones.map((item) => item.phone),
+      recipients: validPhones.map((item) => ({
+        phone: item.phone,
+        contactName: item.contactName ?? null,
+        labels: item.labels,
+      })),
+      recipientStatuses,
+      invalidPhones,
+      totalValidPhones: validPhones.length,
+      totalInvalidPhones: invalidPhones.length,
+      summary: {
+        total: validPhones.length,
+        agendado: validPhones.length,
+        enviado: 0,
+        semWhatsapp: 0,
+        falhaValidacao: 0,
+        falhaEnvio: 0,
+      },
+      intervalSeconds: {
+        min: WHATSAPP_BROADCAST_MIN_DELAY_SECONDS,
+        max: WHATSAPP_BROADCAST_MAX_DELAY_SECONDS,
+      },
+      status: queueUnavailable ? "processando-local" : "agendado",
+    },
+    user.id,
+  )
+
   const queueMessages = validPhones.map<WhatsappBroadcastMessage>((item) => {
     return {
       batchId,
+      dispatchRecordId: dispatchRecord.id,
       userId: user.id,
       to: item.phone,
       message: message || undefined,
@@ -100,34 +149,9 @@ export async function POST(request: Request) {
     }
   })
 
-  const queueUnavailable = process.env.VERCEL !== "1"
-
   if (queueUnavailable) {
     void Promise.allSettled(
-      queueMessages.map((item) =>
-        item.media && item.kind
-          ? sendCrmMediaMessage({
-              userId: item.userId,
-              to: item.to,
-              media: item.media,
-              kind: item.kind,
-              message: item.message,
-              previewUrl: item.previewUrl,
-              mimeType: item.mimeType,
-              fileName: item.fileName,
-              contactName: item.contactName,
-              assignedTo: item.assignedTo,
-              tagLabels: item.tagLabels,
-            })
-          : sendCrmTextMessage({
-              userId: item.userId,
-              to: item.to,
-              message: item.message ?? "",
-              contactName: item.contactName,
-              assignedTo: item.assignedTo,
-              tagLabels: item.tagLabels,
-            }),
-      ),
+      queueMessages.map((item) => processWhatsappBroadcastMessage(item)),
     )
   } else {
     let accumulatedDelaySeconds = 0
@@ -145,37 +169,11 @@ export async function POST(request: Request) {
     )
   }
 
-  await createCrmRecord(
-    "disparos",
-    {
-      title: `Disparo em lote ${new Date().toLocaleDateString("pt-BR")}`,
-      batchId,
-      message,
-      kind: kind ?? null,
-      fileName: body?.fileName ?? null,
-      assignedTo,
-      phones: validPhones.map((item) => item.phone),
-      recipients: validPhones.map((item) => ({
-        phone: item.phone,
-        contactName: item.contactName ?? null,
-        labels: item.labels,
-      })),
-      invalidPhones,
-      totalValidPhones: validPhones.length,
-      totalInvalidPhones: invalidPhones.length,
-      intervalSeconds: {
-        min: WHATSAPP_BROADCAST_MIN_DELAY_SECONDS,
-        max: WHATSAPP_BROADCAST_MAX_DELAY_SECONDS,
-      },
-      status: queueUnavailable ? "processando-local" : "agendado",
-    },
-    user.id,
-  )
-
   return accepted(
-    `${validPhones.length} mensagem${validPhones.length > 1 ? "ens" : ""} agendada${validPhones.length > 1 ? "s" : ""} com intervalo aleatorio de ${WHATSAPP_BROADCAST_MIN_DELAY_SECONDS} a ${WHATSAPP_BROADCAST_MAX_DELAY_SECONDS} segundos.`,
+    `${validPhones.length} mensagem${validPhones.length > 1 ? "ens" : ""} agendada${validPhones.length > 1 ? "s" : ""} com validacao de WhatsApp em segundo plano e intervalo aleatorio de ${WHATSAPP_BROADCAST_MIN_DELAY_SECONDS} a ${WHATSAPP_BROADCAST_MAX_DELAY_SECONDS} segundos.`,
     {
       batchId,
+      dispatchRecordId: dispatchRecord.id,
       validPhones: validPhones.map((item) => item.phone),
       invalidPhones,
       totalValidPhones: validPhones.length,

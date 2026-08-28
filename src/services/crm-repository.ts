@@ -124,6 +124,27 @@ export async function listCrmRecords(
   }
 }
 
+export async function getCrmRecordById(module: CrmModule, id: string) {
+  try {
+    const record = await prisma.crmRecord.findUnique({ where: { id } })
+    if (!record || record.module !== module) return null
+
+    return {
+      id: record.id,
+      module: record.module as CrmModule,
+      title: record.title,
+      status: record.status,
+      owner_user_id: record.ownerUserId,
+      data: record.data as Record<string, unknown>,
+      created_at: record.createdAt,
+      updated_at: record.updatedAt,
+    } satisfies CrmRecord
+  } catch (error) {
+    console.error(`Prisma ${module} get by id error`, error)
+    throw formatRepositoryError(`buscar registro de ${module}`, error)
+  }
+}
+
 export async function createCrmRecord(module: CrmModule, payload: Record<string, unknown>, ownerUserId?: string) {
   const title = String(payload.title ?? payload.nome ?? payload.name ?? module)
   const status = typeof payload.status === "string" ? payload.status : null
