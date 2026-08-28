@@ -48,7 +48,11 @@ export function Sidebar({ user }: { user: SessionUser }) {
         collapsed ? "w-24" : "w-72"
       }`}
     >
-      <div className="flex h-20 shrink-0 items-center justify-between border-b border-slate-100 px-5">
+      <div
+        className={`flex h-20 shrink-0 items-center border-b border-slate-100 px-5 ${
+          collapsed ? "justify-center" : "justify-between"
+        }`}
+      >
         {!collapsed && (
           <Image
             src="/logo.png"
