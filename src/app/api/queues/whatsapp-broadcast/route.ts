@@ -15,6 +15,7 @@ export const POST = handleCallback(async (message: WhatsappBroadcastMessage) => 
       fileName: message.fileName,
       contactName: message.contactName,
       assignedTo: message.assignedTo,
+      tagLabel: message.tagLabel,
     })
     return
   }
@@ -25,5 +26,6 @@ export const POST = handleCallback(async (message: WhatsappBroadcastMessage) => 
     message: message.message ?? "",
     contactName: message.contactName,
     assignedTo: message.assignedTo,
+    tagLabel: message.tagLabel,
   })
 })

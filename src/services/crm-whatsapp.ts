@@ -10,6 +10,7 @@ type SendCrmTextInput = {
   message: string
   contactName?: string
   assignedTo?: string
+  tagLabel?: string
   agentId?: string
   conversationId?: string
 }
@@ -25,6 +26,7 @@ type SendCrmMediaInput = {
   fileName?: string
   contactName?: string
   assignedTo?: string
+  tagLabel?: string
   agentId?: string
   conversationId?: string
 }
@@ -58,7 +60,7 @@ export async function sendCrmTextMessage(input: SendCrmTextInput) {
     source: "manual",
     unread: 0,
     assignedTo: input.assignedTo || String(previousData?.assignedTo ?? "Equipe"),
-    tags: Array.isArray(previousData?.tags) ? previousData.tags : ["evolution", "manual"],
+    tags: mergeConversationTags(previousData, input.tagLabel),
     lastMessage: input.message,
     updatedAt: "agora",
     messages: [...previousMessages, nextMessage],
@@ -116,7 +118,7 @@ export async function sendCrmMediaMessage(input: SendCrmMediaInput) {
     source: "manual",
     unread: 0,
     assignedTo: input.assignedTo || String(previousData?.assignedTo ?? "Equipe"),
-    tags: Array.isArray(previousData?.tags) ? previousData.tags : ["evolution", "manual"],
+    tags: mergeConversationTags(previousData, input.tagLabel),
     lastMessage: input.message || defaultMediaLabel(input.kind),
     updatedAt: "agora",
     messages: [...previousMessages, nextMessage],
@@ -161,6 +163,23 @@ function resolvePersistedPreviewUrl(value?: string) {
   const normalized = value.trim()
   if (!normalized.startsWith("data:image/")) return undefined
   return normalized
+}
+
+function mergeConversationTags(previousData: Record<string, unknown> | undefined, tagLabel?: string) {
+  const baseTags = Array.isArray(previousData?.tags) ? previousData.tags : ["evolution", "manual"]
+  const normalizedCustomTag = tagLabel?.trim()
+  if (!normalizedCustomTag) return baseTags
+
+  const hasTag = baseTags.some((tag) => {
+    if (typeof tag === "string") return tag.trim().toLowerCase() === normalizedCustomTag.toLowerCase()
+    if (tag && typeof tag === "object" && "label" in tag) {
+      return String(tag.label ?? "").trim().toLowerCase() === normalizedCustomTag.toLowerCase()
+    }
+    return false
+  })
+
+  if (hasTag) return baseTags
+  return [...baseTags, { label: normalizedCustomTag, tone: "amber" }]
 }
 
 function resolveEvolutionMessageId(result: unknown) {

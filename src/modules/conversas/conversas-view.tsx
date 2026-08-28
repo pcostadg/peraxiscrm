@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { Eraser, File, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Tag, Trash2, Video, X } from "lucide-react"
+import { Eraser, File, FileSpreadsheet, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Tag, Trash2, Upload, Video, X } from "lucide-react"
 import { chatMessages, conversations } from "@/modules/shared/data"
 import { ModuleHeader, Pill, buttonClass, inputClass, textareaClass } from "@/modules/shared/components"
 import { useRealtimeSync } from "@/services/use-realtime-sync"
@@ -34,6 +34,12 @@ type PendingAttachment = {
   previewUrl?: string
   mimeType?: string
   fileName: string
+}
+
+type ImportedBroadcastRecipient = {
+  contactName: string
+  phone: string
+  label: string
 }
 
 const emptyConversationForm: ConversationFormState = {
@@ -232,6 +238,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newConversation, setNewConversation] = useState<ConversationFormState>(emptyConversationForm)
   const [bulkAttachment, setBulkAttachment] = useState<PendingAttachment | null>(null)
+  const [importedRecipients, setImportedRecipients] = useState<ImportedBroadcastRecipient[]>([])
   const [submittingConversation, setSubmittingConversation] = useState(false)
   const [sending, setSending] = useState(false)
   const [tagDialogOpen, setTagDialogOpen] = useState(false)
@@ -339,6 +346,11 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             phones: newConversation.phones,
+            recipients: importedRecipients.map((item) => ({
+              contactName: item.contactName,
+              phone: item.phone,
+              label: item.label,
+            })),
             message: newConversation.message,
             media: bulkAttachment?.media,
             previewUrl: bulkAttachment?.previewUrl,
@@ -354,6 +366,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
         setDialogOpen(false)
         setNewConversation(emptyConversationForm)
         setBulkAttachment(null)
+        setImportedRecipients([])
         toast.success(result.message || "Disparo em lote agendado.")
         if (Array.isArray(result.invalidPhones) && result.invalidPhones.length > 0) {
           toast.error(`Alguns numeros foram ignorados: ${result.invalidPhones.join(", ")}`)
@@ -415,6 +428,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       setDialogOpen(false)
       setNewConversation(emptyConversationForm)
       setBulkAttachment(null)
+      setImportedRecipients([])
       toast.success("Conversa iniciada.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao iniciar conversa.")
@@ -647,6 +661,26 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       toast.success("Imagem pronta para o disparo em lote.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao preparar a imagem do disparo.")
+    }
+  }
+
+  async function handleBroadcastSpreadsheetSelected(file?: File | null) {
+    if (!file || submittingConversation) return
+
+    try {
+      const imported = await parseBroadcastSpreadsheet(file)
+      if (!imported.length) {
+        throw new Error("A planilha nao trouxe linhas validas. Use as colunas categoryName, phone e label.")
+      }
+
+      setImportedRecipients(imported)
+      setNewConversation((current) => ({
+        ...current,
+        phones: imported.map((item) => item.phone).join("\n"),
+      }))
+      toast.success(`${imported.length} contato${imported.length > 1 ? "s" : ""} importado${imported.length > 1 ? "s" : ""} da planilha.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao importar a planilha.")
     }
   }
 
@@ -1381,10 +1415,63 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                     <textarea
                       className={`${textareaClass} mt-2 min-h-32`}
                       value={newConversation.phones}
-                      onChange={(event) => setNewConversation((current) => ({ ...current, phones: event.target.value }))}
+                      onChange={(event) => {
+                        setImportedRecipients([])
+                        setNewConversation((current) => ({ ...current, phones: event.target.value }))
+                      }}
                       placeholder={"+5511999999999\n+5511988887777\n+5511977776666"}
                     />
                     <p className="mt-2 text-xs text-slate-500">Separe por quebra de linha, virgula ou ponto e virgula.</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+                        <Upload size={16} />
+                        Importar Excel/CSV
+                        <input
+                          className="sr-only"
+                          type="file"
+                          accept=".csv,.xlsx,.xls"
+                          disabled={submittingConversation}
+                          onChange={(event) => {
+                            void handleBroadcastSpreadsheetSelected(event.target.files?.[0])
+                            event.currentTarget.value = ""
+                          }}
+                        />
+                      </label>
+                      <p className="text-xs text-slate-500">Colunas esperadas: `categoryName`, `phone` e `label`.</p>
+                    </div>
+                    {importedRecipients.length > 0 && (
+                      <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                            <FileSpreadsheet size={16} />
+                            {importedRecipients.length} contato{importedRecipients.length > 1 ? "s" : ""} importado{importedRecipients.length > 1 ? "s" : ""}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={submittingConversation}
+                            className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => {
+                              setImportedRecipients([])
+                              setNewConversation((current) => ({ ...current, phones: "" }))
+                            }}
+                          >
+                            Limpar planilha
+                          </button>
+                        </div>
+                        <div className="mt-3 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+                          {importedRecipients.slice(0, 20).map((item, index) => (
+                            <div key={`${item.phone}-${index}`} className="grid gap-1 border-b border-slate-100 px-3 py-2 text-xs text-slate-600 last:border-b-0 md:grid-cols-[1.2fr_1fr_1fr] md:items-center md:gap-3">
+                              <span className="font-semibold text-slate-800">{item.contactName || "Sem nome"}</span>
+                              <span>{item.phone}</span>
+                              <span>{item.label || "Sem etiqueta"}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {importedRecipients.length > 20 && (
+                          <p className="mt-2 text-xs text-slate-500">Mostrando os 20 primeiros contatos importados.</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mensagem</label>
@@ -1451,6 +1538,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 onClick={() => {
                   setDialogOpen(false)
                   setBulkAttachment(null)
+                  setImportedRecipients([])
                   setSubmittingConversation(false)
                 }}
               >
@@ -1643,6 +1731,34 @@ function getPresenceLabel(status?: Conversation["presenceStatus"]) {
     default:
       return ""
   }
+}
+
+async function parseBroadcastSpreadsheet(file: File) {
+  const XLSX = await import("xlsx")
+  const buffer = await file.arrayBuffer()
+  const workbook = XLSX.read(buffer, { type: "array" })
+  const firstSheetName = workbook.SheetNames[0]
+  const worksheet = firstSheetName ? workbook.Sheets[firstSheetName] : undefined
+  if (!worksheet) return []
+
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+    defval: "",
+    raw: false,
+  })
+
+  return rows
+    .map((row) => {
+      const normalizedRow = Object.fromEntries(
+        Object.entries(row).map(([key, value]) => [key.trim().toLowerCase(), String(value ?? "").trim()]),
+      )
+
+      return {
+        contactName: normalizedRow.categoryname ?? "",
+        phone: normalizedRow.phone ?? "",
+        label: normalizedRow.label ?? "",
+      }
+    })
+    .filter((row) => row.phone)
 }
 
 function normalizeMessageKind(kind: unknown, mimeType?: string, mediaUrl?: string): ChatMessage["kind"] {

@@ -9,6 +9,7 @@ export type WhatsappBroadcastMessage = {
   message?: string
   assignedTo?: string
   contactName?: string
+  tagLabel?: string
   media?: string
   previewUrl?: string
   kind?: "imagem" | "video" | "documento"

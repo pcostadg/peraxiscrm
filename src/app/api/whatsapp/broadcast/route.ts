@@ -13,6 +13,7 @@ import {
 
 type BroadcastBody = {
   phones?: string
+  recipients?: Array<{ phone?: string; contactName?: string; label?: string }>
   message?: string
   media?: string
   previewUrl?: string
@@ -31,7 +32,25 @@ export async function POST(request: Request) {
   const message = String(body?.message ?? "").trim()
   const media = String(body?.media ?? "").trim() || undefined
   const assignedTo = String(body?.assignedTo ?? "").trim() || "Equipe"
-  const parsedPhones = parsePhoneList(String(body?.phones ?? ""))
+  const importedRecipients = Array.isArray(body?.recipients)
+    ? body.recipients.map((item) => ({
+        phone: String(item?.phone ?? ""),
+        contactName: String(item?.contactName ?? "").trim() || undefined,
+        label: String(item?.label ?? "").trim() || undefined,
+      }))
+    : []
+  const parsedPhones = importedRecipients.length
+    ? importedRecipients.map((item) => {
+        const parsed = parsePhoneList(item.phone)
+        const first = parsed[0]
+        return {
+          phone: first?.phone ?? "",
+          valid: first?.valid ?? false,
+          contactName: item.contactName,
+          label: item.label,
+        }
+      })
+    : parsePhoneList(String(body?.phones ?? "")).map((item) => ({ ...item, contactName: undefined, label: undefined }))
   const validPhones = parsedPhones.filter((item) => item.valid)
   const invalidPhones = parsedPhones.filter((item) => !item.valid).map((item) => item.phone)
   const kind = body?.kind
@@ -71,7 +90,8 @@ export async function POST(request: Request) {
       to: item.phone,
       message: message || undefined,
       assignedTo,
-      contactName: String(body?.contactName ?? "").trim() || undefined,
+      contactName: item.contactName || String(body?.contactName ?? "").trim() || undefined,
+      tagLabel: item.label,
       media,
       previewUrl: String(body?.previewUrl ?? "").trim() || undefined,
       kind,
@@ -97,6 +117,7 @@ export async function POST(request: Request) {
               fileName: item.fileName,
               contactName: item.contactName,
               assignedTo: item.assignedTo,
+              tagLabel: item.tagLabel,
             })
           : sendCrmTextMessage({
               userId: item.userId,
@@ -104,6 +125,7 @@ export async function POST(request: Request) {
               message: item.message ?? "",
               contactName: item.contactName,
               assignedTo: item.assignedTo,
+              tagLabel: item.tagLabel,
             }),
       ),
     )
@@ -133,6 +155,11 @@ export async function POST(request: Request) {
       fileName: body?.fileName ?? null,
       assignedTo,
       phones: validPhones.map((item) => item.phone),
+      recipients: validPhones.map((item) => ({
+        phone: item.phone,
+        contactName: item.contactName ?? null,
+        label: item.label ?? null,
+      })),
       invalidPhones,
       totalValidPhones: validPhones.length,
       totalInvalidPhones: invalidPhones.length,
