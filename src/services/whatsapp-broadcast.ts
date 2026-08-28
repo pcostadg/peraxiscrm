@@ -23,7 +23,7 @@ export type WhatsappBroadcastRecipientStatus = {
   phone: string
   contactName?: string | null
   labels?: string[]
-  status: "agendado" | "ignorado_duplicado" | "sem_whatsapp" | "enviado" | "falha_validacao" | "falha_envio"
+  status: "agendado" | "interrompido" | "ignorado_duplicado" | "sem_whatsapp" | "enviado" | "falha_validacao" | "falha_envio"
   error?: string | null
   checkedAt?: string | null
   sentAt?: string | null
@@ -43,6 +43,15 @@ export async function processWhatsappBroadcastMessage(message: WhatsappBroadcast
   const sharedMimeType = normalizeOptionalString(dispatchData.mimeType)
   const sharedFileName = normalizeOptionalString(dispatchData.fileName)
   const sharedKind = normalizeMediaKind(dispatchData.kind)
+
+  if (String(dispatchData.status ?? "").trim() === "interrompido") {
+    await patchDispatchRecipient(message, {
+      status: "interrompido",
+      checkedAt,
+      error: "Agendamento interrompido manualmente.",
+    })
+    return { status: "interrompido" as const }
+  }
 
   try {
     const check = await checkEvolutionWhatsAppNumber(message.to)
@@ -180,6 +189,7 @@ function summarizeStatuses(entries: unknown[]) {
   const summary = {
     total: entries.length,
     agendado: 0,
+    interrompido: 0,
     ignoradoDuplicado: 0,
     enviado: 0,
     semWhatsapp: 0,
@@ -191,6 +201,7 @@ function summarizeStatuses(entries: unknown[]) {
     if (!entry || typeof entry !== "object") continue
     const status = String((entry as { status?: unknown }).status ?? "")
     if (status === "agendado") summary.agendado += 1
+    if (status === "interrompido") summary.interrompido += 1
     if (status === "ignorado_duplicado") summary.ignoradoDuplicado += 1
     if (status === "enviado") summary.enviado += 1
     if (status === "sem_whatsapp") summary.semWhatsapp += 1

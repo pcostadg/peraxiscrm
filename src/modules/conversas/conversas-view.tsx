@@ -259,6 +259,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [broadcastHistory, setBroadcastHistory] = useState<BroadcastHistoryItem[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [clearingHistory, setClearingHistory] = useState(false)
+  const [stoppingBroadcastId, setStoppingBroadcastId] = useState("")
   const [submittingConversation, setSubmittingConversation] = useState(false)
   const [sending, setSending] = useState(false)
   const [tagDialogOpen, setTagDialogOpen] = useState(false)
@@ -504,6 +505,27 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       toast.error(error instanceof Error ? error.message : "Falha ao limpar historico dos disparos.")
     } finally {
       setClearingHistory(false)
+    }
+  }
+
+  async function handleStopBroadcast(recordId: string) {
+    if (!recordId || stoppingBroadcastId) return
+    setStoppingBroadcastId(recordId)
+
+    try {
+      const response = await fetch(`/api/disparos/${recordId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stop" }),
+      })
+      const result = await readJsonResponse(response)
+      if (!response.ok) throw new Error(readResponseMessage(result.error, "Nao foi possivel interromper o agendamento."))
+      await refreshBroadcastHistory()
+      toast.success("Agendamento interrompido.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao interromper agendamento.")
+    } finally {
+      setStoppingBroadcastId("")
     }
   }
 
@@ -1737,9 +1759,21 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                         <h3 className="text-sm font-bold text-slate-900">{item.title}</h3>
                         <p className="text-xs text-slate-500">{item.createdAt}</p>
                       </div>
-                      <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                        {formatBroadcastStatus(item.status)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {item.status === "agendado" ? (
+                          <button
+                            type="button"
+                            disabled={stoppingBroadcastId === item.id}
+                            className="inline-flex h-9 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void handleStopBroadcast(item.id)}
+                          >
+                            {stoppingBroadcastId === item.id ? "Interrompendo..." : "Interromper agendamento"}
+                          </button>
+                        ) : null}
+                        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${historyStatusClass(item.status)}`}>
+                          {formatBroadcastStatus(item.status)}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="overflow-x-auto">
@@ -1852,6 +1886,8 @@ function formatBroadcastStatus(value: string) {
       return "Enviado"
     case "ignorado_duplicado":
       return "Ignorado por duplicacao"
+    case "interrompido":
+      return "Interrompido"
     case "sem_whatsapp":
       return "Sem WhatsApp"
     case "falha_validacao":
@@ -1874,6 +1910,8 @@ function historyStatusClass(value: string) {
     case "enviado":
     case "concluido":
       return "bg-emerald-50 text-emerald-700"
+    case "interrompido":
+      return "bg-amber-50 text-amber-700"
     case "ignorado_duplicado":
     case "concluido-parcial":
       return "bg-amber-50 text-amber-700"
