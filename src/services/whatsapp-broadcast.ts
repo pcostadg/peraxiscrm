@@ -28,7 +28,7 @@ export type WhatsappBroadcastRecipientStatus = {
   phone: string
   contactName?: string | null
   labels?: string[]
-  status: "agendado" | "sem_whatsapp" | "enviado" | "falha_validacao" | "falha_envio"
+  status: "agendado" | "ignorado_duplicado" | "sem_whatsapp" | "enviado" | "falha_validacao" | "falha_envio"
   error?: string | null
   checkedAt?: string | null
   sentAt?: string | null
@@ -173,6 +173,7 @@ function summarizeStatuses(entries: unknown[]) {
   const summary = {
     total: entries.length,
     agendado: 0,
+    ignoradoDuplicado: 0,
     enviado: 0,
     semWhatsapp: 0,
     falhaValidacao: 0,
@@ -183,6 +184,7 @@ function summarizeStatuses(entries: unknown[]) {
     if (!entry || typeof entry !== "object") continue
     const status = String((entry as { status?: unknown }).status ?? "")
     if (status === "agendado") summary.agendado += 1
+    if (status === "ignorado_duplicado") summary.ignoradoDuplicado += 1
     if (status === "enviado") summary.enviado += 1
     if (status === "sem_whatsapp") summary.semWhatsapp += 1
     if (status === "falha_validacao") summary.falhaValidacao += 1

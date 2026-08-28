@@ -402,6 +402,9 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
         if (Array.isArray(result.invalidPhones) && result.invalidPhones.length > 0) {
           toast.error(`Alguns numeros foram ignorados: ${result.invalidPhones.join(", ")}`)
         }
+        if (Array.isArray(result.duplicatePhones) && result.duplicatePhones.length > 0) {
+          toast.error(`Numeros duplicados foram ignorados automaticamente: ${result.duplicatePhones.join(", ")}`)
+        }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Falha ao agendar o disparo.")
       } finally {
@@ -1847,6 +1850,8 @@ function formatBroadcastStatus(value: string) {
   switch (value) {
     case "enviado":
       return "Enviado"
+    case "ignorado_duplicado":
+      return "Ignorado por duplicacao"
     case "sem_whatsapp":
       return "Sem WhatsApp"
     case "falha_validacao":
@@ -1869,12 +1874,13 @@ function historyStatusClass(value: string) {
     case "enviado":
     case "concluido":
       return "bg-emerald-50 text-emerald-700"
+    case "ignorado_duplicado":
+    case "concluido-parcial":
+      return "bg-amber-50 text-amber-700"
     case "sem_whatsapp":
     case "falha_validacao":
     case "falha_envio":
       return "bg-rose-50 text-rose-700"
-    case "concluido-parcial":
-      return "bg-amber-50 text-amber-700"
     default:
       return "bg-slate-100 text-slate-700"
   }

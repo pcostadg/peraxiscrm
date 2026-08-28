@@ -55,14 +55,6 @@ export async function POST(request: Request) {
   const validPhones = parsedPhones.filter((item) => item.valid)
   const invalidPhones = parsedPhones.filter((item) => !item.valid).map((item) => item.phone)
   const kind = body?.kind
-  const duplicatePhones = Array.from(
-    validPhones.reduce((duplicates, item, _, items) => {
-      if (items.filter((entry) => entry.phone === item.phone).length > 1) {
-        duplicates.add(item.phone)
-      }
-      return duplicates
-    }, new Set<string>()),
-  )
 
   if (!message && !media) {
     return Response.json({ error: "Mensagem ou imagem obrigatoria." }, { status: 400 })
@@ -76,24 +68,37 @@ export async function POST(request: Request) {
     return Response.json({ error: "Informe ao menos um numero valido." }, { status: 400 })
   }
 
-  if (duplicatePhones.length) {
-    return Response.json(
-      { error: `Remova os numeros duplicados antes de agendar: ${duplicatePhones.join(", ")}` },
-      { status: 400 },
-    )
-  }
-
   const queueUnavailable = process.env.VERCEL !== "1"
+  const seenPhones = new Set<string>()
+  const uniqueValidPhones = validPhones.filter((item) => {
+    if (seenPhones.has(item.phone)) return false
+    seenPhones.add(item.phone)
+    return true
+  })
+  const duplicateEntries = validPhones.filter((item, index) => {
+    return validPhones.findIndex((entry) => entry.phone === item.phone) !== index
+  })
   const batchId = `broadcast-${Date.now()}`
-  const recipientStatuses = validPhones.map<WhatsappBroadcastRecipientStatus>((item) => ({
-    phone: item.phone,
-    contactName: item.contactName ?? null,
-    labels: item.labels,
-    status: "agendado",
-    error: null,
-    checkedAt: null,
-    sentAt: null,
-  }))
+  const recipientStatuses = [
+    ...uniqueValidPhones.map<WhatsappBroadcastRecipientStatus>((item) => ({
+      phone: item.phone,
+      contactName: item.contactName ?? null,
+      labels: item.labels,
+      status: "agendado",
+      error: null,
+      checkedAt: null,
+      sentAt: null,
+    })),
+    ...duplicateEntries.map<WhatsappBroadcastRecipientStatus>((item) => ({
+      phone: item.phone,
+      contactName: item.contactName ?? null,
+      labels: item.labels,
+      status: "ignorado_duplicado",
+      error: "Numero ignorado por duplicacao no mesmo disparo.",
+      checkedAt: new Date().toISOString(),
+      sentAt: null,
+    })),
+  ]
 
   const dispatchRecord = await createCrmRecord(
     "disparos",
@@ -104,19 +109,22 @@ export async function POST(request: Request) {
       kind: kind ?? null,
       fileName: body?.fileName ?? null,
       assignedTo,
-      phones: validPhones.map((item) => item.phone),
-      recipients: validPhones.map((item) => ({
+      phones: uniqueValidPhones.map((item) => item.phone),
+      recipients: recipientStatuses.map((item) => ({
         phone: item.phone,
         contactName: item.contactName ?? null,
         labels: item.labels,
       })),
       recipientStatuses,
       invalidPhones,
-      totalValidPhones: validPhones.length,
+      duplicatePhones: duplicateEntries.map((item) => item.phone),
+      totalValidPhones: uniqueValidPhones.length,
       totalInvalidPhones: invalidPhones.length,
+      totalDuplicatePhones: duplicateEntries.length,
       summary: {
-        total: validPhones.length,
-        agendado: validPhones.length,
+        total: recipientStatuses.length,
+        agendado: uniqueValidPhones.length,
+        ignoradoDuplicado: duplicateEntries.length,
         enviado: 0,
         semWhatsapp: 0,
         falhaValidacao: 0,
@@ -131,7 +139,7 @@ export async function POST(request: Request) {
     user.id,
   )
 
-  const queueMessages = validPhones.map<WhatsappBroadcastMessage>((item) => {
+  const queueMessages = uniqueValidPhones.map<WhatsappBroadcastMessage>((item) => {
     return {
       batchId,
       dispatchRecordId: dispatchRecord.id,
@@ -170,14 +178,16 @@ export async function POST(request: Request) {
   }
 
   return accepted(
-    `${validPhones.length} mensagem${validPhones.length > 1 ? "ens" : ""} agendada${validPhones.length > 1 ? "s" : ""} com validacao de WhatsApp em segundo plano e intervalo aleatorio de ${WHATSAPP_BROADCAST_MIN_DELAY_SECONDS} a ${WHATSAPP_BROADCAST_MAX_DELAY_SECONDS} segundos.`,
+    `${uniqueValidPhones.length} mensagem${uniqueValidPhones.length > 1 ? "ens" : ""} agendada${uniqueValidPhones.length > 1 ? "s" : ""} com validacao de WhatsApp em segundo plano e intervalo aleatorio de ${WHATSAPP_BROADCAST_MIN_DELAY_SECONDS} a ${WHATSAPP_BROADCAST_MAX_DELAY_SECONDS} segundos.`,
     {
       batchId,
       dispatchRecordId: dispatchRecord.id,
-      validPhones: validPhones.map((item) => item.phone),
+      validPhones: uniqueValidPhones.map((item) => item.phone),
       invalidPhones,
-      totalValidPhones: validPhones.length,
+      duplicatePhones: duplicateEntries.map((item) => item.phone),
+      totalValidPhones: uniqueValidPhones.length,
       totalInvalidPhones: invalidPhones.length,
+      totalDuplicatePhones: duplicateEntries.length,
       background: !queueUnavailable,
     },
   )
