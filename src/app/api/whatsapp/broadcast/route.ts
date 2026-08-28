@@ -35,6 +35,14 @@ export async function POST(request: Request) {
   const validPhones = parsedPhones.filter((item) => item.valid)
   const invalidPhones = parsedPhones.filter((item) => !item.valid).map((item) => item.phone)
   const kind = body?.kind
+  const duplicatePhones = Array.from(
+    validPhones.reduce((duplicates, item, _, items) => {
+      if (items.filter((entry) => entry.phone === item.phone).length > 1) {
+        duplicates.add(item.phone)
+      }
+      return duplicates
+    }, new Set<string>()),
+  )
 
   if (!message && !media) {
     return Response.json({ error: "Mensagem ou imagem obrigatoria." }, { status: 400 })
@@ -46,6 +54,13 @@ export async function POST(request: Request) {
 
   if (!validPhones.length) {
     return Response.json({ error: "Informe ao menos um numero valido." }, { status: 400 })
+  }
+
+  if (duplicatePhones.length) {
+    return Response.json(
+      { error: `Remova os numeros duplicados antes de agendar: ${duplicatePhones.join(", ")}` },
+      { status: 400 },
+    )
   }
 
   const batchId = `broadcast-${Date.now()}`

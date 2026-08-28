@@ -232,6 +232,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newConversation, setNewConversation] = useState<ConversationFormState>(emptyConversationForm)
   const [bulkAttachment, setBulkAttachment] = useState<PendingAttachment | null>(null)
+  const [submittingConversation, setSubmittingConversation] = useState(false)
   const [sending, setSending] = useState(false)
   const [tagDialogOpen, setTagDialogOpen] = useState(false)
   const [newTag, setNewTag] = useState("")
@@ -328,6 +329,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
 
   async function handleStartConversation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (submittingConversation) return
+    setSubmittingConversation(true)
 
     if (newConversation.bulkMode) {
       try {
@@ -357,6 +360,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Falha ao agendar o disparo.")
+      } finally {
+        setSubmittingConversation(false)
       }
 
       return
@@ -413,6 +418,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       toast.success("Conversa iniciada.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao iniciar conversa.")
+    } finally {
+      setSubmittingConversation(false)
     }
   }
 
@@ -1323,8 +1330,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="w-[min(96vw,760px)] max-w-[min(96vw,760px)] overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
-          <form onSubmit={handleStartConversation}>
+        <DialogContent className="flex max-h-[92vh] w-[min(96vw,760px)] max-w-[min(96vw,760px)] flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
+          <form onSubmit={handleStartConversation} className="flex min-h-0 flex-1 flex-col">
             <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
               <DialogTitle>Chamar novo numero</DialogTitle>
               <DialogDescription>
@@ -1332,11 +1339,13 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid gap-5 px-8 py-8">
+            <div className="min-h-0 flex-1 overflow-y-auto px-8 py-8">
+              <div className="grid gap-5">
               <div className="flex flex-wrap gap-3 rounded-2xl bg-slate-100/80 p-2">
                 <button
                   type="button"
                   className={`inline-flex min-w-40 items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition ${!newConversation.bulkMode ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}
+                  disabled={submittingConversation}
                   onClick={() => {
                     setNewConversation((current) => ({ ...current, bulkMode: false }))
                     setBulkAttachment(null)
@@ -1347,6 +1356,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 <button
                   type="button"
                   className={`inline-flex min-w-40 items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold transition ${newConversation.bulkMode ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}
+                  disabled={submittingConversation}
                   onClick={() => setNewConversation((current) => ({ ...current, bulkMode: true }))}
                 >
                   Disparo em lote
@@ -1395,6 +1405,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                         className="sr-only"
                         type="file"
                         accept="image/*"
+                        disabled={submittingConversation}
                         onChange={(event) => {
                           void handleBulkAttachmentSelected(event.target.files?.[0])
                           event.currentTarget.value = ""
@@ -1414,7 +1425,8 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                         <button
                           type="button"
                           onClick={() => setBulkAttachment(null)}
-                          className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                          disabled={submittingConversation}
+                          className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Remover imagem
                         </button>
@@ -1428,22 +1440,29 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Responsavel</label>
                 <input className={`${inputClass} mt-2`} value={newConversation.assignedTo} onChange={(event) => setNewConversation((current) => ({ ...current, assignedTo: event.target.value }))} placeholder="Equipe ou agente" />
               </div>
+              </div>
             </div>
 
             <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-6">
               <button
                 type="button"
-                className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700"
+                disabled={submittingConversation}
+                className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => {
                   setDialogOpen(false)
                   setBulkAttachment(null)
+                  setSubmittingConversation(false)
                 }}
               >
                 Cancelar
               </button>
-              <button type="submit" className="inline-flex h-11 min-w-40 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white">
+              <button
+                type="submit"
+                disabled={submittingConversation}
+                className="inline-flex h-11 min-w-40 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
                 <PhoneCall size={16} />
-                {newConversation.bulkMode ? "Agendar disparo" : "Iniciar conversa"}
+                {submittingConversation ? "Processando..." : newConversation.bulkMode ? "Agendar disparo" : "Iniciar conversa"}
               </button>
             </DialogFooter>
           </form>
