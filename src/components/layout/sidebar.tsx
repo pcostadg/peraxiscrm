@@ -49,8 +49,8 @@ export function Sidebar({ user }: { user: SessionUser }) {
       }`}
     >
       <div
-        className={`flex h-20 shrink-0 items-center border-b border-slate-100 px-5 ${
-          collapsed ? "justify-center" : "justify-between"
+        className={`relative flex h-20 shrink-0 items-center border-b border-slate-100 px-5 ${
+          collapsed ? "justify-center" : "justify-center"
         }`}
       >
         {!collapsed && (
@@ -67,7 +67,9 @@ export function Sidebar({ user }: { user: SessionUser }) {
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-100"
+          className={`rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-100 ${
+            collapsed ? "" : "absolute right-5"
+          }`}
           aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
