@@ -1,7 +1,7 @@
 import "server-only"
 
 import { Buffer } from "node:buffer"
-import { normalizePhone as normalizeBrazilianPhone } from "@/services/validators"
+import { isValidBrazilianWhatsApp, normalizePhone as normalizeBrazilianPhone } from "@/services/validators"
 
 type SendEvolutionTextInput = {
   to: string
@@ -294,9 +294,7 @@ export function parseEvolutionWebhookPayload(payload: Record<string, unknown>) {
   const data = payload.data && typeof payload.data === "object" ? (payload.data as Record<string, unknown>) : payload
   const key = data.key && typeof data.key === "object" ? (data.key as Record<string, unknown>) : {}
 
-  const phone = String(payload.sender ?? data.sender ?? key.remoteJid ?? data.remoteJid ?? payload.phone ?? "")
-    .replace(/@.+$/, "")
-    .replace(/\D/g, "")
+  const phone = resolveWebhookPhone(payload, data, key)
 
   const contactName = normalizeTextCandidate(
     data.pushName ?? data.notifyName ?? data.senderName ?? payload.senderName ?? payload.pushName,
@@ -328,6 +326,46 @@ export function parseEvolutionWebhookPayload(payload: Record<string, unknown>) {
     direction: (key.fromMe === true || data.fromMe === true ? "saida" : "entrada") as "entrada" | "saida",
     raw: payload,
   } satisfies ParsedEvolutionWebhook
+}
+
+function resolveWebhookPhone(
+  payload: Record<string, unknown>,
+  data: Record<string, unknown>,
+  key: Record<string, unknown>,
+) {
+  const candidates = [
+    payload.sender,
+    data.sender,
+    key.participant,
+    data.participant,
+    key.remoteJid,
+    data.remoteJid,
+    payload.phone,
+    data.phone,
+    payload.key && typeof payload.key === "object" ? (payload.key as Record<string, unknown>).remoteJid : undefined,
+  ]
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue
+
+    const normalized = normalizeBrazilianPhone(candidate)
+    if (isValidBrazilianWhatsApp(normalized)) {
+      return normalized
+    }
+
+    const digits = candidate.replace(/\D/g, "")
+    for (const size of [13, 12, 11, 10]) {
+      if (digits.length < size) continue
+      const sliced = digits.slice(-size)
+      const normalizedSlice = normalizeBrazilianPhone(sliced)
+      if (isValidBrazilianWhatsApp(normalizedSlice)) {
+        return normalizedSlice
+      }
+    }
+  }
+
+  const fallback = String(payload.sender ?? data.sender ?? key.remoteJid ?? data.remoteJid ?? payload.phone ?? "")
+  return fallback.replace(/@.+$/, "").replace(/\D/g, "")
 }
 
 export function isEvolutionStatusWebhook(payload: Record<string, unknown>) {

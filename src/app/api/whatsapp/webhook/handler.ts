@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createBackendSupabaseClient } from "@/lib/supabase"
 import { createCrmRecord, findDefaultCrmOwnerId, listCrmRecords, type CrmRecord, upsertCrmRecordById } from "@/services/crm-repository"
 import { extractEvolutionStatusUpdates, isEvolutionStatusWebhook, isValidEvolutionWebhook, parseEvolutionWebhookPayload } from "@/services/evolution"
+import { phonesMatch } from "@/services/validators"
 
 function isPlaceholderName(value: unknown, phone: string) {
   const name = String(value ?? "").trim().toLowerCase()
@@ -51,8 +52,7 @@ export async function POST(request: Request) {
     const records = await listCrmRecords("conversas")
     const existingConversation = Array.isArray(records)
       ? (records as CrmRecord[]).find((record) => {
-          const phone = String(record.data.phone ?? "")
-          return phone.replace(/\D/g, "") === parsed.phone
+          return phonesMatch(String(record.data.phone ?? ""), parsed.phone)
         })
       : null
 

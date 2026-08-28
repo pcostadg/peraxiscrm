@@ -2,7 +2,7 @@ import "server-only"
 
 import { createCrmRecord, listCrmRecords, type CrmRecord, upsertCrmRecordById } from "@/services/crm-repository"
 import { resolveEvolutionPhone, sendEvolutionTextMessage } from "@/services/evolution"
-import { normalizePhone } from "@/services/validators"
+import { normalizePhone, phonesMatch } from "@/services/validators"
 
 type SendCrmTextInput = {
   userId: string
@@ -19,8 +19,7 @@ export async function sendCrmTextMessage(input: SendCrmTextInput) {
   const result = await sendEvolutionTextMessage({ to: destinationPhone, message: input.message })
   const records = await listCrmRecords("conversas", input.userId)
   const existingConversation = (records as CrmRecord[]).find((record) => {
-    const phone = normalizePhone(String(record.data.phone ?? ""))
-    return phone === normalizePhone(input.to) || phone === destinationPhone
+    return phonesMatch(String(record.data.phone ?? ""), input.to) || phonesMatch(String(record.data.phone ?? ""), destinationPhone)
   })
 
   const conversationId = input.conversationId || existingConversation?.id || `conversation-${destinationPhone}`

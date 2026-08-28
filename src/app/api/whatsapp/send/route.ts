@@ -3,7 +3,7 @@ import { requireApiUser } from "@/app/api/_shared"
 import { createCrmRecord, listCrmRecords, type CrmRecord, upsertCrmRecordById } from "@/services/crm-repository"
 import { sendCrmTextMessage } from "@/services/crm-whatsapp"
 import { resolveEvolutionPhone, sendEvolutionAudioMessage, sendEvolutionMediaMessage } from "@/services/evolution"
-import { normalizePhone } from "@/services/validators"
+import { normalizePhone, phonesMatch } from "@/services/validators"
 
 export async function POST(request: Request) {
   const { user, response } = await requireApiUser(request)
@@ -62,8 +62,7 @@ export async function POST(request: Request) {
 
     const records = await listCrmRecords("conversas", user.id)
     const existingConversation = (records as CrmRecord[]).find((record) => {
-      const phone = normalizePhone(String(record.data.phone ?? ""))
-      return phone === normalizePhone(body.to ?? "") || phone === destinationPhone
+      return phonesMatch(String(record.data.phone ?? ""), body.to ?? "") || phonesMatch(String(record.data.phone ?? ""), destinationPhone)
     })
 
     const conversationId = body.conversationId || existingConversation?.id || `conversation-${destinationPhone}`
