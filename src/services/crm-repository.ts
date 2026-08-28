@@ -85,12 +85,25 @@ function sanitizeJsonValue(value: unknown): JsonCompatibleValue {
   return String(value)
 }
 
-export async function listCrmRecords(module: CrmModule, ownerUserId?: string) {
+export async function listCrmRecords(
+  module: CrmModule,
+  ownerUserId?: string,
+  options?: { includeUnowned?: boolean },
+) {
   try {
     const data = await prisma.crmRecord.findMany({
       where: {
         module,
-        ...(ownerUserId ? { ownerUserId } : {}),
+        ...(ownerUserId
+          ? options?.includeUnowned
+            ? {
+                OR: [
+                  { ownerUserId },
+                  { ownerUserId: null },
+                ],
+              }
+            : { ownerUserId }
+          : {}),
       },
       orderBy: { createdAt: "desc" },
     })
