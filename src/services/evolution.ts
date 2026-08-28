@@ -334,15 +334,16 @@ function resolveWebhookPhone(
   key: Record<string, unknown>,
 ) {
   const candidates = [
-    payload.sender,
-    data.sender,
+    key.remoteJid,
+    key.remoteJidAlt,
+    data.remoteJid,
+    payload.key && typeof payload.key === "object" ? (payload.key as Record<string, unknown>).remoteJid : undefined,
     key.participant,
     data.participant,
-    key.remoteJid,
-    data.remoteJid,
     payload.phone,
     data.phone,
-    payload.key && typeof payload.key === "object" ? (payload.key as Record<string, unknown>).remoteJid : undefined,
+    payload.sender,
+    data.sender,
   ]
 
   for (const candidate of candidates) {
