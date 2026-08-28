@@ -5,6 +5,7 @@ import { Eraser, File, FileSpreadsheet, History, ImageIcon, MessageCircle, Mic, 
 import { chatMessages, conversations } from "@/modules/shared/data"
 import { ModuleHeader, Pill, buttonClass, inputClass, textareaClass } from "@/modules/shared/components"
 import { useRealtimeSync } from "@/services/use-realtime-sync"
+import { DEFAULT_CONVERSATION_MESSAGE_LIMIT } from "@/services/conversation-records"
 import type { CrmRecord } from "@/services/crm-repository"
 import type { ChatMessage, Conversation, ConversationTag, ConversationTagTone } from "@/types/crm"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -18,6 +19,8 @@ const attachmentTypes = [
   { label: "Video", icon: Video, kind: "video" as const },
   { label: "Documento", icon: File, kind: "documento" as const },
 ]
+const CONVERSATION_SUMMARY_REFRESH_MS = 5000
+const CONVERSATION_HISTORY_REFRESH_MS = 10000
 
 type ConversationFormState = {
   contactName: string
@@ -242,10 +245,19 @@ function messagesFromRecord(record: CrmRecord): ChatMessage[] {
   })
 }
 
-export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
-  const realtime = useRealtimeSync(["conversas", "agentes"])
+export function ConversasView({
+  dbRecords = [],
+  initialActiveRecord = null,
+}: {
+  dbRecords?: CrmRecord[]
+  initialActiveRecord?: CrmRecord | null
+}) {
+  const realtime = useRealtimeSync(["conversas", "agentes"], {
+    fallbackIntervalMs: CONVERSATION_SUMMARY_REFRESH_MS,
+    minTickIntervalMs: 1000,
+  })
   const initialConversations = dbRecords.length ? dbRecords.map(conversationFromRecord) : conversations
-  const initialMessages = dbRecords.length ? dbRecords.flatMap(messagesFromRecord) : chatMessages
+  const initialMessages = initialActiveRecord ? messagesFromRecord(initialActiveRecord) : dbRecords.length ? [] : chatMessages
   const [conversationItems, setConversationItems] = useState<Conversation[]>(initialConversations)
   const [messageItems, setMessageItems] = useState<ChatMessage[]>(initialMessages)
   const [activeId, setActiveId] = useState(initialConversations[0]?.id ?? "")
@@ -283,16 +295,14 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
 
     async function refreshConversations() {
       try {
-        const response = await fetch("/api/conversas", { cache: "no-store" })
+        const response = await fetch("/api/conversas?summary=1", { cache: "no-store" })
         const result = await response.json()
         if (!response.ok || !result?.data || cancelled) return
 
         const records = Array.isArray(result.data) ? (result.data as CrmRecord[]) : []
         const nextConversations = records.map(conversationFromRecord)
-        const nextMessages = records.flatMap(messagesFromRecord)
 
         setConversationItems(nextConversations)
-        setMessageItems((current) => mergeMessageSnapshots(nextMessages, current))
         setActiveId((current) => {
           if (current && nextConversations.some((item) => item.id === current)) return current
           return nextConversations[0]?.id ?? ""
@@ -302,16 +312,51 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       }
     }
 
+    const shouldPoll = realtime.status !== "tempo real"
     void refreshConversations()
-    const interval = window.setInterval(() => {
-      void refreshConversations()
-    }, 500)
+    const interval = shouldPoll
+      ? window.setInterval(() => {
+          if (document.visibilityState === "visible") {
+            void refreshConversations()
+          }
+        }, CONVERSATION_SUMMARY_REFRESH_MS)
+      : null
 
     return () => {
       cancelled = true
-      window.clearInterval(interval)
+      if (interval !== null) {
+        window.clearInterval(interval)
+      }
     }
-  }, [realtime.tick])
+  }, [realtime.status, realtime.tick])
+
+  useEffect(() => {
+    if (!activeId) {
+      setMessageItems([])
+      return
+    }
+
+    let cancelled = false
+
+    async function refreshActiveMessages() {
+      try {
+        const response = await fetch(`/api/conversas?id=${encodeURIComponent(activeId)}&messagesLimit=${DEFAULT_CONVERSATION_MESSAGE_LIMIT}`, { cache: "no-store" })
+        const result = await response.json()
+        if (!response.ok || !result?.data || cancelled) return
+
+        const record = result.data as CrmRecord
+        const nextMessages = messagesFromRecord(record)
+        setMessageItems((current) => mergeMessageSnapshots(nextMessages, current, activeId))
+      } catch {
+        // Silent retry on next tick.
+      }
+    }
+
+    void refreshActiveMessages()
+    return () => {
+      cancelled = true
+    }
+  }, [activeId, realtime.tick])
 
   useEffect(() => {
     return () => {
@@ -330,7 +375,7 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
     void refreshBroadcastHistory()
     const interval = window.setInterval(() => {
       void refreshBroadcastHistory()
-    }, 3000)
+    }, CONVERSATION_HISTORY_REFRESH_MS)
 
     return () => window.clearInterval(interval)
   }, [historyOpen])
@@ -896,22 +941,6 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           updatedAt: active.updatedAt,
           unread: active.unread,
           presenceStatus: active.presenceStatus,
-          messages: messageItems
-            .filter((message) => message.conversationId === active.id)
-            .map((message) => ({
-              id: message.id,
-              direction: message.direction,
-              kind: message.kind,
-              content: message.content,
-              mediaUrl: message.mediaUrl,
-              previewUrl: message.previewUrl,
-              mimeType: message.mimeType,
-              fileName: message.fileName,
-              zapiMessageId: message.zapiMessageId,
-              zapiZaapId: message.zapiZaapId,
-              status: message.status,
-              time: message.time,
-            })),
           status: "aberta",
         }),
       })
@@ -970,22 +999,6 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
               updatedAt: item.updatedAt,
               unread: item.unread,
               presenceStatus: item.presenceStatus,
-              messages: messageItems
-                .filter((message) => message.conversationId === item.id)
-                .map((message) => ({
-                  id: message.id,
-                  direction: message.direction,
-                  kind: message.kind,
-                  content: message.content,
-                  mediaUrl: message.mediaUrl,
-                  previewUrl: message.previewUrl,
-                  mimeType: message.mimeType,
-                  fileName: message.fileName,
-                  zapiMessageId: message.zapiMessageId,
-                  zapiZaapId: message.zapiZaapId,
-                  status: message.status,
-                  time: message.time,
-                })),
               status: "aberta",
             }),
           })
@@ -2113,7 +2126,7 @@ function resolveChatMediaUrl(mediaUrl?: string) {
   if (!mediaUrl) return undefined
   if (mediaUrl.startsWith("data:") || mediaUrl.startsWith("blob:")) return mediaUrl
   if (/^https?:\/\//i.test(mediaUrl)) {
-    return `/api/whatsapp/media?url=${encodeURIComponent(mediaUrl)}`
+    return mediaUrl
   }
 
   return mediaUrl
@@ -2129,11 +2142,12 @@ function resolveEvolutionMessageId(result: unknown) {
   return undefined
 }
 
-function mergeMessageSnapshots(serverMessages: ChatMessage[], currentMessages: ChatMessage[]) {
+function mergeMessageSnapshots(serverMessages: ChatMessage[], currentMessages: ChatMessage[], conversationId: string) {
   const serverIds = new Set(
     serverMessages.flatMap((message) => [message.id, message.zapiMessageId].filter((value): value is string => Boolean(value))),
   )
   const localMessagesToKeep = currentMessages.filter((message) => {
+    if (message.conversationId !== conversationId) return false
     if (serverIds.has(message.id) || (message.zapiMessageId && serverIds.has(message.zapiMessageId))) return false
     if (message.direction !== "saida") return false
     if (message.status === "falha" || message.status === "pendente") return true

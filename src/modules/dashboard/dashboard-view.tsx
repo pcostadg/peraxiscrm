@@ -117,7 +117,10 @@ export function DashboardView({
   projectRecords?: CrmRecord[]
 }) {
   const [activeId, setActiveId] = useState(dashboardMetrics[0]?.id ?? "faturamento")
-  const realtime = useRealtimeSync(["leads", "conversas", "disparos", "projetos", "financeiro"])
+  const realtime = useRealtimeSync(["leads", "conversas", "disparos", "projetos", "financeiro"], {
+    fallbackIntervalMs: 15000,
+    minTickIntervalMs: 10000,
+  })
   const [liveLeadRecords, setLiveLeadRecords] = useState(leadRecords)
   const [liveProjectRecords, setLiveProjectRecords] = useState(projectRecords)
   const [liveFinanceRecords, setLiveFinanceRecords] = useState(financeRecords)
@@ -129,7 +132,7 @@ export function DashboardView({
       try {
         const [leadsResponse, conversationsResponse, dispatchResponse, projectsResponse, financeResponse] = await Promise.all([
           fetch("/api/leads", { cache: "no-store" }),
-          fetch("/api/conversas", { cache: "no-store" }),
+          fetch("/api/conversas?summary=1", { cache: "no-store" }),
           fetch("/api/disparos", { cache: "no-store" }),
           fetch("/api/projetos", { cache: "no-store" }),
           fetch("/api/financeiro", { cache: "no-store" }),
