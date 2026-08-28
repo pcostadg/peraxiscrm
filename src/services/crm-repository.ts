@@ -260,6 +260,20 @@ export async function deleteCrmRecord(module: CrmModule, id: string, ownerUserId
   return prisma.crmRecord.delete({ where: { id } })
 }
 
+export async function deleteCrmRecords(module: CrmModule, ownerUserId?: string) {
+  try {
+    return await prisma.crmRecord.deleteMany({
+      where: {
+        module,
+        ...(ownerUserId ? { ownerUserId } : {}),
+      },
+    })
+  } catch (error) {
+    console.error(`Prisma ${module} delete many error`, error)
+    throw formatRepositoryError(`limpar registros de ${module}`, error)
+  }
+}
+
 export async function listAppUsers(): Promise<AppUserListRecord[]> {
   try {
     const records = await prisma.appUser.findMany({

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
-import { Eraser, File, FileSpreadsheet, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Tag, Trash2, Upload, Video, X } from "lucide-react"
+import { Eraser, File, FileSpreadsheet, History, ImageIcon, MessageCircle, Mic, Paperclip, PhoneCall, Plus, Send, Tag, Trash2, Upload, Video, X } from "lucide-react"
 import { chatMessages, conversations } from "@/modules/shared/data"
 import { ModuleHeader, Pill, buttonClass, inputClass, textareaClass } from "@/modules/shared/components"
 import { useRealtimeSync } from "@/services/use-realtime-sync"
@@ -40,6 +40,22 @@ type ImportedBroadcastRecipient = {
   contactName: string
   phone: string
   labels: string[]
+}
+
+type BroadcastHistoryRecipient = {
+  phone: string
+  contactName: string
+  labels: string[]
+  status: string
+  error?: string | null
+}
+
+type BroadcastHistoryItem = {
+  id: string
+  title: string
+  createdAt: string
+  status: string
+  recipients: BroadcastHistoryRecipient[]
 }
 
 const emptyConversationForm: ConversationFormState = {
@@ -236,9 +252,13 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
   const [filter, setFilter] = useState<(typeof filters)[number]>("todas")
   const [draft, setDraft] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [newConversation, setNewConversation] = useState<ConversationFormState>(emptyConversationForm)
   const [bulkAttachment, setBulkAttachment] = useState<PendingAttachment | null>(null)
   const [importedRecipients, setImportedRecipients] = useState<ImportedBroadcastRecipient[]>([])
+  const [broadcastHistory, setBroadcastHistory] = useState<BroadcastHistoryItem[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [clearingHistory, setClearingHistory] = useState(false)
   const [submittingConversation, setSubmittingConversation] = useState(false)
   const [sending, setSending] = useState(false)
   const [tagDialogOpen, setTagDialogOpen] = useState(false)
@@ -302,6 +322,17 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
     }
   }, [recordedAudioUrl])
+
+  useEffect(() => {
+    if (!historyOpen) return
+
+    void refreshBroadcastHistory()
+    const interval = window.setInterval(() => {
+      void refreshBroadcastHistory()
+    }, 3000)
+
+    return () => window.clearInterval(interval)
+  }, [historyOpen])
 
   const filtered = useMemo(
     () =>
@@ -434,6 +465,42 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
       toast.error(error instanceof Error ? error.message : "Falha ao iniciar conversa.")
     } finally {
       setSubmittingConversation(false)
+    }
+  }
+
+  async function refreshBroadcastHistory() {
+    setLoadingHistory(true)
+
+    try {
+      const response = await fetch("/api/disparos", { cache: "no-store" })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Nao foi possivel carregar o historico.")
+      const records = Array.isArray(result.data) ? (result.data as CrmRecord[]) : []
+      setBroadcastHistory(records.map(broadcastHistoryFromRecord))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao carregar historico dos disparos.")
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
+  async function handleClearBroadcastHistory() {
+    if (clearingHistory) return
+    setClearingHistory(true)
+
+    try {
+      const response = await fetch("/api/disparos", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Nao foi possivel zerar o historico.")
+      setBroadcastHistory([])
+      toast.success("Historico de disparos zerado.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao limpar historico dos disparos.")
+    } finally {
+      setClearingHistory(false)
     }
   }
 
@@ -995,6 +1062,14 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
         action={
           <div className="flex items-center gap-2">
             <Pill tone={realtime.status === "tempo real" ? "emerald" : "amber"}>{realtime.status}</Pill>
+            <button
+              type="button"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <History size={18} />
+              Historico
+            </button>
             <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" onClick={() => setDialogOpen(true)}>
               <PhoneCall size={18} />
               Novo numero
@@ -1637,8 +1712,172 @@ export function ConversasView({ dbRecords = [] }: { dbRecords?: CrmRecord[] }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="flex max-h-[92vh] w-[min(96vw,980px)] max-w-[min(96vw,980px)] flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-0 shadow-[0_40px_120px_-60px_rgba(15,23,42,0.48)]">
+          <DialogHeader className="border-b border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_72%)] px-8 py-7">
+            <DialogTitle>Historico de disparos</DialogTitle>
+            <DialogDescription>
+              Acompanhe todos os disparos em lote com nome, numero, etiquetas e status por contato.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-8 py-8">
+            {loadingHistory && !broadcastHistory.length ? (
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">Carregando historico...</div>
+            ) : broadcastHistory.length ? (
+              <div className="space-y-5">
+                {broadcastHistory.map((item) => (
+                  <div key={item.id} className="overflow-hidden rounded-[24px] border border-slate-200 bg-white">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900">{item.title}</h3>
+                        <p className="text-xs text-slate-500">{item.createdAt}</p>
+                      </div>
+                      <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        {formatBroadcastStatus(item.status)}
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[720px] text-left text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-5 py-3">Nome</th>
+                            <th className="px-5 py-3">Numero</th>
+                            <th className="px-5 py-3">Etiquetas</th>
+                            <th className="px-5 py-3">Status</th>
+                            <th className="px-5 py-3">Detalhe</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {item.recipients.map((recipient, index) => (
+                            <tr key={`${item.id}-${recipient.phone}-${index}`} className="border-t border-slate-100">
+                              <td className="px-5 py-3 font-medium text-slate-900">{recipient.contactName || "Sem nome"}</td>
+                              <td className="px-5 py-3 text-slate-600">{recipient.phone}</td>
+                              <td className="px-5 py-3">
+                                <div className="flex flex-wrap gap-1">
+                                  {recipient.labels.length ? recipient.labels.map((label) => (
+                                    <span key={`${recipient.phone}-${label}`} className="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700">
+                                      {label}
+                                    </span>
+                                  )) : <span className="text-xs text-slate-400">Sem etiqueta</span>}
+                                </div>
+                              </td>
+                              <td className="px-5 py-3">
+                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${historyStatusClass(recipient.status)}`}>
+                                  {formatBroadcastStatus(recipient.status)}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3 text-xs text-slate-500">{recipient.error || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                Nenhum disparo registrado ainda.
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="border-slate-200 bg-slate-50 px-8 py-6">
+            <button
+              type="button"
+              disabled={clearingHistory || loadingHistory || !broadcastHistory.length}
+              className="inline-flex h-11 min-w-40 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-5 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => void handleClearBroadcastHistory()}
+            >
+              <Trash2 size={16} />
+              {clearingHistory ? "Limpando..." : "Zerar historico"}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-11 min-w-32 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700"
+              onClick={() => setHistoryOpen(false)}
+            >
+              Fechar
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
+}
+
+function broadcastHistoryFromRecord(record: CrmRecord): BroadcastHistoryItem {
+  const data = record.data as Record<string, unknown>
+  const recipientStatuses = Array.isArray(data.recipientStatuses) ? data.recipientStatuses : []
+
+  return {
+    id: record.id,
+    title: String(data.title ?? record.title ?? "Disparo em lote"),
+    createdAt: formatHistoryDate(record.created_at),
+    status: String(data.status ?? record.status ?? "agendado"),
+    recipients: recipientStatuses.map((entry) => {
+      const item = entry as Record<string, unknown>
+      return {
+        phone: String(item.phone ?? ""),
+        contactName: String(item.contactName ?? ""),
+        labels: Array.isArray(item.labels) ? item.labels.map((label) => String(label ?? "").trim()).filter(Boolean) : [],
+        status: String(item.status ?? "agendado"),
+        error: typeof item.error === "string" ? item.error : null,
+      }
+    }),
+  }
+}
+
+function formatHistoryDate(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return "Data indisponivel"
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function formatBroadcastStatus(value: string) {
+  switch (value) {
+    case "enviado":
+      return "Enviado"
+    case "sem_whatsapp":
+      return "Sem WhatsApp"
+    case "falha_validacao":
+      return "Falha na validacao"
+    case "falha_envio":
+      return "Falha no envio"
+    case "concluido":
+      return "Concluido"
+    case "concluido-parcial":
+      return "Concluido parcial"
+    case "concluido-sem-envios":
+      return "Sem envios"
+    default:
+      return "Agendado"
+  }
+}
+
+function historyStatusClass(value: string) {
+  switch (value) {
+    case "enviado":
+    case "concluido":
+      return "bg-emerald-50 text-emerald-700"
+    case "sem_whatsapp":
+    case "falha_validacao":
+    case "falha_envio":
+      return "bg-rose-50 text-rose-700"
+    case "concluido-parcial":
+      return "bg-amber-50 text-amber-700"
+    default:
+      return "bg-slate-100 text-slate-700"
+  }
 }
 
 function blobToDataUrl(blob: Blob) {
