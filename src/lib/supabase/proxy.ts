@@ -7,9 +7,14 @@ export function updateSession(request: NextRequest) {
   const user = getUserFromCookieValue(request.cookies.get(COOKIE_NAME)?.value)
   const pathname = request.nextUrl.pathname
   const host = request.headers.get("host")
+  const isRoot = pathname === "/"
   const isPanel = pathname === "/painel" || pathname.startsWith("/painel/")
   const isLogin = pathname === ROUTES.LOGIN
   const isEquipe = pathname === ROUTES.EQUIPE || pathname.startsWith(`${ROUTES.EQUIPE}/`)
+
+  if (isAppHost(host) && isRoot) {
+    return NextResponse.redirect(new URL(ROUTES.LOGIN, request.url))
+  }
 
   if (!isAppHost(host) && (isLogin || isPanel)) {
     return NextResponse.redirect(
